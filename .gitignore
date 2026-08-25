@@ -1,7 +1,5 @@
 # Credenciais e configuração local
-firebase-key.json
 .env
-firmware/esp32.ino
 
 # Ambientes virtuais
 .venv/
@@ -16,11 +14,9 @@ __pycache__/
 htmlcov/
 
 # IDE e sistema operacional
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
 # Dados e logs gerados localmente
 *.log
-
