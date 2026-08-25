@@ -130,6 +130,44 @@ $env:FIREBASE_KEY_PATH = "C:\caminho\seguro\firebase-key.json"
 
 O firmware real também contém configuração local e é ignorado. Copie [esp32.example.ino](firmware/esp32.example.ino) para `firmware/esp32.ino` e preencha as configurações somente na cópia local.
 
+## Continuar o projeto em outro computador
+
+No Windows PowerShell, execute os comandos abaixo em ordem:
+
+```powershell
+git clone https://github.com/gusantin/sompo-risk-platform.git
+cd sompo-risk-platform
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+O arquivo `firebase-key.json` não está no GitHub por segurança. Obtenha novamente a credencial da conta de serviço por um canal seguro e escolha uma das opções:
+
+1. Coloque `firebase-key.json` na raiz do projeto; ou
+2. mantenha a chave em outro diretório e configure o caminho na sessão do PowerShell:
+
+```powershell
+$env:FIREBASE_KEY_PATH = "C:\caminho\seguro\firebase-key.json"
+```
+
+Não copie uma chave real para `.env.example`, documentação, testes ou commits. Em seguida, valide e execute o projeto:
+
+```powershell
+python -m compileall -q server.py integracoes services tests
+python -m unittest discover -s tests -v
+python server.py
+```
+
+Com o servidor iniciado, abra:
+
+```text
+http://127.0.0.1:5000/
+http://127.0.0.1:5000/risco?lat=-17.79&lon=-50.92
+```
+
+Para testar o ESP32 no novo computador, copie `firmware/esp32.example.ino` para o arquivo local ignorado `firmware/esp32.ino`, configure Wi-Fi e endereço do servidor e use o ambiente Arduino habitual. Não é necessário configurar PlatformIO para executar o backend.
+
 ## Execução
 
 ```powershell
@@ -147,6 +185,13 @@ python -m unittest discover -s tests -v
 ```
 
 Os testes cobrem validação das rotas, resiliência das integrações, cálculos de risco e terreno e persistência REST simulada.
+
+## Arquivos auxiliares e legados
+
+- `dados_sensores.csv`: pequena amostra histórica útil para demonstração; não participa atualmente do fluxo Flask nem do motor de risco.
+- `teste_firebase.py`: diagnóstico manual legado da conexão REST com o Firestore. Ele escreve um documento de teste e não faz parte da suíte automatizada.
+
+Esses arquivos foram mantidos para referência e não são necessários para iniciar `server.py`.
 
 ## Segurança
 
@@ -180,4 +225,3 @@ Os testes cobrem validação das rotas, resiliência das integrações, cálculo
 ## Licença e uso
 
 Projeto acadêmico. Antes de qualquer uso produtivo, valide licenças das fontes, requisitos de atribuição, segurança, calibração e governança dos dados.
-
