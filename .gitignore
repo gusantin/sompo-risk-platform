@@ -1,5 +1,8 @@
 # Credenciais e configuração local
 .env
+firebase-key.json
+firmware/secrets.h
+.pio/
 
 # Ambientes virtuais
 .venv/
@@ -10,8 +13,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
+.firebase/
 
 # IDE e sistema operacional
 .idea/

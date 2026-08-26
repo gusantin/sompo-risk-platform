@@ -1,0 +1,191 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "leituras_sensores",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "maquinaId", "order": "ASCENDING"},
+        {"fieldPath": "dataHora", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "leituras_sensores",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "dataHora", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "analises_risco",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "timestamp", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "maquinas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "devices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "domain_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "severity", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "type", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "riskType", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "severity", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "type", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "riskType", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "maquinaId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "maquinaId", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "machine_state_current",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "fazendaId", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "machine_state_current",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "attention", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "regional_locations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "state", "order": "ASCENDING"},
+        {"fieldPath": "municipality", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "regional_risk_current",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "territory.state", "order": "ASCENDING"},
+        {"fieldPath": "riskType", "order": "ASCENDING"},
+        {"fieldPath": "riskScore", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "regional_risk_snapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "territory.ibgeCode", "order": "ASCENDING"},
+        {"fieldPath": "riskType", "order": "ASCENDING"},
+        {"fieldPath": "calculatedAt", "order": "DESCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,440 @@
+openapi: 3.0.3
+info:
+  title: SOMPO Risk Platform API
+  version: "1"
+  description: >-
+    API determinística de contexto e índices de risco. Scores não são probabilidades;
+    confidence representa qualidade/cobertura dos dados. A infraestrutura regional está
+    pronta, mas o rollout do dataset está adiado.
+servers:
+  - url: http://localhost:5000
+security:
+  - BearerAuth: []
+paths:
+  /:
+    get:
+      security: []
+      summary: Identidade e versão do serviço
+      responses:
+        "200": {description: Serviço online}
+  /health:
+    get:
+      security: []
+      summary: Liveness
+      responses:
+        "200": {description: Processo saudável}
+  /ready:
+    get:
+      security: []
+      summary: Readiness da configuração essencial
+      responses:
+        "200": {description: Configurado}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /dados:
+    post:
+      security:
+        - DeviceToken: []
+      summary: Ingere telemetria autenticada pelo dispositivo
+      description: >-
+        deviceId resolve fazenda e máquina no backend. Unidades devem coincidir exatamente
+        com o perfil do sensor; nenhuma conversão é implícita. O payload legado de
+        temperatura/umidade permanece aceito e tem escopo unknown. Para o ESP32 DHT,
+        readingId é recomendado para repetição idempotente e observedAt omitido é
+        atribuído pelo servidor em UTC.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TelemetryIngest"}
+      responses:
+        "200":
+          description: Recebida ou deduplicada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TelemetryAccepted"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/DeviceUnauthorized"}
+        "409": {description: readingId reutilizado com outro payload}
+        "413": {description: Payload excedeu o limite configurado}
+        "415": {description: Content-Type não é application/json}
+        "429": {description: Rate limit local excedido}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /risco:
+    get:
+      summary: Calcula risco ambiental por coordenada
+      parameters:
+        - {name: lat, in: query, required: true, schema: {type: number, minimum: -90, maximum: 90}}
+        - {name: lon, in: query, required: true, schema: {type: number, minimum: -180, maximum: 180}}
+      responses:
+        "200": {description: Risco calculado}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /dashboard:
+    get:
+      summary: Agregado persistido para o dashboard, sem chamadas externas
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
+      responses:
+        "200": {description: Propriedades com risco corrente, alertas ativos e máquinas em atenção}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /showcase/live-cases:
+    get:
+      summary: Lê casos limitados de propriedades demonstrativas com ambiente real
+      description: >-
+        Retorna o snapshot preparado por scripts/find_live_demo_cases.py, com proveniência,
+        freshness, incêndio e geada. Não executa consultas externas durante a leitura.
+      responses:
+        "200": {description: Casos ambientais reais e estado de staleness}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /devices:
+    get:
+      summary: Lista dispositivos sem material de credencial
+      parameters:
+        - {name: fazendaId, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Lista sanitizada}
+    post:
+      summary: Provisiona identidade e hash de credencial
+      description: O token é recebido uma vez e nunca aparece na resposta nem no Firestore em claro.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeviceProvision"}
+      responses:
+        "201": {description: Provisionado}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409": {description: deviceId já existe}
+  /devices/{deviceId}:
+    parameters:
+      - {$ref: "#/components/parameters/DeviceId"}
+    get:
+      summary: Obtém dispositivo sanitizado
+      responses:
+        "200": {description: Dispositivo}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      summary: Altera estado ou revoga dispositivo
+      description: Um dispositivo revogado só volta a active por rotação atômica da credencial.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: {status: {type: string, enum: [active, revoked]}}
+      responses:
+        "200": {description: Estado alterado}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /devices/{deviceId}/rotate:
+    parameters:
+      - {$ref: "#/components/parameters/DeviceId"}
+    post:
+      summary: Rotaciona a credencial sem devolvê-la
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties: {token: {type: string, minLength: 16, maxLength: 512, writeOnly: true}}
+      responses:
+        "200": {description: Credencial rotacionada}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /fazendas:
+    get:
+      summary: Lista propriedades
+      responses:
+        "200": {description: Lista, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyList"}}}}
+    post:
+      summary: Cria propriedade
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/Property"}}
+      responses:
+        "201": {description: Criada}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /fazendas/{fazendaId}:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Detalha propriedade
+      responses:
+        "200": {description: Propriedade}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      summary: Atualiza propriedade
+      responses:
+        "200": {description: Atualizada}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /fazendas/{fazendaId}/status:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Snapshot agregado da propriedade sem chamadas externas
+      responses:
+        "200": {description: Risco atual, tendência, máquinas, alertas, cobertura e saúde das fontes}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /fazendas/{fazendaId}/risco:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Calcula e persiste o fluxo contextual completo
+      responses:
+        "200": {description: Risco, eventos, alertas e persistência, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyRisk"}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {description: Rate limit local excedido}
+  /fazendas/{fazendaId}/risco/tendencia:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Tendência histórica
+      responses:
+        "200": {description: Tendência por risco}
+  /fazendas/{fazendaId}/analises:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Histórico compacto ou detalhado
+      responses:
+        "200": {description: Série histórica}
+  /fazendas/{fazendaId}/maquinas:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Lista máquinas
+      responses: {"200": {description: Lista}}
+    post:
+      summary: Cria máquina e seus perfis semânticos de sensores
+      responses:
+        "201": {description: Criada}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /fazendas/{fazendaId}/maquinas/{maquinaId}:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+      - {$ref: "#/components/parameters/MaquinaId"}
+    get:
+      summary: Detalha máquina
+      responses: {"200": {description: Máquina}, "404": {$ref: "#/components/responses/NotFound"}}
+    patch:
+      summary: Atualiza máquina
+      responses: {"200": {description: Atualizada}, "400": {$ref: "#/components/responses/BadRequest"}}
+  /fazendas/{fazendaId}/maquinas/{maquinaId}/telemetria:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+      - {$ref: "#/components/parameters/MaquinaId"}
+    get:
+      summary: Telemetria histórica e série normalizada
+      responses: {"200": {description: Leituras em ordem decrescente}}
+  /fazendas/{fazendaId}/maquinas/{maquinaId}/risco:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+      - {$ref: "#/components/parameters/MaquinaId"}
+    get:
+      summary: Risco interno dirigido por thresholds configurados
+      responses: {"200": {description: Machine risk ou insufficient_data}}
+  /fazendas/{fazendaId}/maquinas/{maquinaId}/status:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+      - {$ref: "#/components/parameters/MaquinaId"}
+    get:
+      summary: Snapshot da máquina sem chamadas externas
+      responses:
+        "200": {description: Identidade, health, telemetria, riscos, localização e alertas}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /alertas:
+    get:
+      summary: Lista e filtra alertas
+      parameters:
+        - {name: fazendaId, in: query, schema: {type: string}}
+        - {name: maquinaId, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [open, acknowledged, resolved]}}
+        - {name: severity, in: query, schema: {type: string, enum: [moderate, high, critical]}}
+        - {name: type, in: query, schema: {type: string}}
+        - {name: riskType, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses: {"200": {description: Alertas}}
+  /fazendas/{fazendaId}/alertas:
+    parameters:
+      - {$ref: "#/components/parameters/FazendaId"}
+    get:
+      summary: Lista alertas da propriedade
+      responses: {"200": {description: Alertas}}
+  /alertas/{alertId}:
+    parameters:
+      - {$ref: "#/components/parameters/AlertId"}
+    get:
+      summary: Detalha alerta
+      responses: {"200": {description: Alerta}, "404": {$ref: "#/components/responses/NotFound"}}
+    patch:
+      summary: Reconhece ou resolve alerta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: {status: {type: string, enum: [acknowledged, resolved]}}
+      responses:
+        "200": {description: Estado atualizado}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /eventos:
+    get:
+      summary: Lista transições/eventos da propriedade
+      parameters:
+        - {name: fazendaId, in: query, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses: {"200": {description: Eventos}}
+  /regional/risco:
+    get:
+      summary: Ranking de snapshots regionais; dataset rollout deferred
+      parameters:
+        - {name: uf, in: query, required: true, schema: {type: string, example: MT}}
+        - {name: riskType, in: query, schema: {type: string, enum: [incendio], default: incendio}}
+        - {name: level, in: query, schema: {type: string}}
+        - {name: municipality, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 20}}
+      responses: {"200": {description: Ranking persistido}, "503": {$ref: "#/components/responses/Unavailable"}}
+  /regional/risco/{ibgeCode}:
+    get:
+      summary: Detalhe municipal persistido
+      parameters: [{$ref: "#/components/parameters/IbgeCode"}]
+      responses: {"200": {description: Detalhe}, "404": {$ref: "#/components/responses/NotFound"}}
+  /regional/risco/{ibgeCode}/historico:
+    get:
+      summary: Histórico municipal persistido
+      parameters: [{$ref: "#/components/parameters/IbgeCode"}]
+      responses: {"200": {description: Histórico}}
+  /regional/map:
+    get:
+      summary: Pontos municipais já carregados
+      responses: {"200": {description: Pontos}}
+  /regional/hotspots:
+    get:
+      summary: Hotspots existentes em snapshots já carregados
+      responses: {"200": {description: Camada parcial}}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Provider V1 de API key; arquitetura permite futura troca por JWT/Firebase Auth.
+    DeviceToken:
+      type: apiKey
+      in: header
+      name: X-Device-Token
+      description: Token por dispositivo, comparado de forma segura com hash PBKDF2 persistido.
+  parameters:
+    FazendaId: {name: fazendaId, in: path, required: true, schema: {type: string, maxLength: 100}}
+    MaquinaId: {name: maquinaId, in: path, required: true, schema: {type: string, maxLength: 100}}
+    DeviceId: {name: deviceId, in: path, required: true, schema: {type: string, maxLength: 100}}
+    AlertId: {name: alertId, in: path, required: true, schema: {type: string, maxLength: 100}}
+    IbgeCode: {name: ibgeCode, in: path, required: true, schema: {type: string, pattern: "^\\d+$"}}
+  responses:
+    BadRequest: {description: Payload inválido, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    NotFound: {description: Não encontrado, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    DeviceUnauthorized: {description: Dispositivo ausente, inválido ou revogado, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    Unavailable: {description: Dependência indisponível, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  schemas:
+    Error:
+      type: object
+      required: [status, error, requestId]
+      properties:
+        status: {type: string, example: erro}
+        requestId: {type: string}
+        error:
+          type: object
+          required: [code, message]
+          properties: {code: {type: string}, message: {type: string}}
+    DeviceProvision:
+      type: object
+      required: [deviceId, fazendaId, maquinaId, token]
+      additionalProperties: false
+      properties:
+        deviceId: {type: string}
+        fazendaId: {type: string}
+        maquinaId: {type: string}
+        token: {type: string, minLength: 16, maxLength: 512, writeOnly: true}
+        metadata: {type: object}
+    MeasurementValue:
+      oneOf:
+        - {type: number}
+        - type: object
+          required: [value, unit]
+          additionalProperties: false
+          properties: {value: {type: number}, unit: {type: string, enum: [celsius, fahrenheit, kelvin, percent, m_s, km_h, m_s2, ppm, volt, ampere, pascal, rpm, unknown]}}
+    TelemetryIngest:
+      type: object
+      required: [deviceId]
+      additionalProperties: false
+      oneOf:
+        - {required: [measurements]}
+        - {required: [temperatura, umidade]}
+      properties:
+        deviceId: {type: string}
+        readingId: {type: string, description: Chave idempotente opcional por dispositivo}
+        observedAt: {type: string, format: date-time}
+        fazendaId: {type: string, description: Opcional; se enviado deve coincidir com a identidade}
+        maquinaId: {type: string, description: Opcional; se enviado deve coincidir com a identidade}
+        temperatura: {type: number, minimum: -40, maximum: 85, description: Legado DHT11 com escopo unknown; limites padrão, configuráveis no servidor}
+        umidade: {type: number, minimum: 0, maximum: 100, description: Legado DHT11 com escopo unknown}
+        measurements:
+          type: object
+          minProperties: 1
+          maxProperties: 50
+          additionalProperties: {$ref: "#/components/schemas/MeasurementValue"}
+    TelemetryAccepted:
+      type: object
+      required: [status, documentoId, deviceId, fazendaId, maquinaId, observedAt, receivedAt, deduplicated]
+      properties:
+        status: {type: string, enum: [ok]}
+        apiContractVersion: {type: string, enum: ["1"]}
+        mensagem: {type: string}
+        documentoId: {type: string}
+        deviceId: {type: string}
+        fazendaId: {type: string}
+        maquinaId: {type: string}
+        observedAt: {type: string, format: date-time}
+        receivedAt: {type: string, format: date-time}
+        deduplicated: {type: boolean}
+    SensorProfile:
+      type: object
+      required: [sensorId, type, scope, target, unit]
+      properties:
+        sensorId: {type: string}
+        type: {type: string}
+        scope: {type: string, enum: [ambient_local, machine_internal, machine_component, soil, other, unknown]}
+        target: {type: string, nullable: true}
+        unit: {type: string}
+        thresholds: {type: object, nullable: true}
+        metadata: {type: object}
+    Property:
+      type: object
+      required: [nome, municipio, estado, latitude, longitude, areaHectares, atividadePrincipal]
+      properties:
+        fazendaId: {type: string}
+        nome: {type: string}
+        municipio: {type: string}
+        estado: {type: string}
+        latitude: {type: number}
+        longitude: {type: number}
+        areaHectares: {type: number}
+        atividadePrincipal: {type: string}
+        culturas: {type: array, items: {type: object}}
+    PropertyList:
+      type: object
+      properties: {status: {type: string}, fazendas: {type: array, items: {$ref: "#/components/schemas/Property"}}}
+    PropertyRisk:
+      type: object
+      properties:
+        apiContractVersion: {type: string, enum: ["1"]}
+        environmentalRisk: {type: object}
+        riskExplanations: {type: object}
+        machines: {type: array, items: {type: object}}
+        events: {type: array, items: {type: object}}
+        alerts: {type: array, items: {type: object}}
+        hotspots: {type: object}
+        contexto: {type: object}

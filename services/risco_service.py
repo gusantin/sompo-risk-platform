@@ -90,6 +90,9 @@ def _sgb(sgb, processo):
 
 
 def calcular_riscos(fontes):
+    # Aceita o contexto estruturado sem alterar as regras e pesos legados.
+    if "rawSources" in fontes:
+        fontes = fontes["rawSources"]
     clima = fontes.get("clima", {}).get("dados", {})
     hidro = fontes.get("hidrologia", {}).get("dados", {})
     sgb = fontes.get("sgb", {})
@@ -143,9 +146,12 @@ def calcular_riscos(fontes):
         ("chuva_72h", _crescente(chuva72, 20, 100) if chuva72 is not None else None, 0.55, "Chuva acumulada prevista em 72 h."),
         ("suscetibilidade_sgb", _sgb(sgb, "enxurrada"), 0.45, "Classe de suscetibilidade no ponto segundo o SGB."),
     ])
+    movimento_sgb = _sgb(sgb, "movimentoMassa")
+    corrida_sgb = _sgb(sgb, "corridaMassa")
     movimento = _montar([
         ("chuva_72h", _crescente(chuva72, 30, 150) if chuva72 is not None else None, 0.45, "Chuva acumulada prevista em 72 h."),
-        ("suscetibilidade_sgb", _sgb(sgb, "movimentoMassa"), 0.55, "Classe de suscetibilidade no ponto segundo o SGB."),
+        ("suscetibilidade_movimento_sgb", movimento_sgb, 0.35, "Classe de suscetibilidade a movimento de massa segundo o SGB."),
+        ("suscetibilidade_corrida_sgb", corrida_sgb, 0.20, "Classe de suscetibilidade a corrida de massa segundo o SGB."),
     ])
     declividade = terreno.get("declividadePct")
     variacao = terreno.get("variacaoAltitudeMetros")
@@ -160,7 +166,7 @@ def calcular_riscos(fontes):
     divergencias = _divergencias(clima, inmet)
     inmet_recente = inmet.get("status") == "ok" and inmet.get("dados", {}).get("observacaoRecente")
     if inmet_recente and not divergencias:
-        for risco in (incendio, geada, inundacao, enxurrada, movimento):
+        for risco in (incendio, geada):
             _elevar_confianca(risco, "Observação recente do INMET sem divergência relevante nas variáveis comparáveis.")
     if queimadas.get("status") in ("ok", "parcial"):
         _elevar_confianca(incendio, "Consulta recente ao Programa Queimadas do INPE.")
@@ -169,7 +175,8 @@ def calcular_riscos(fontes):
         "enxurrada": enxurrada, "movimentoMassa": movimento,
         "terrenoOperacional": terreno_operacional,
     }
-    disponiveis = [item for item in riscos.values() if item["score"] is not None]
+    # O risco geral representa perigos ambientais; terreno permanece um indicador operacional separado.
+    disponiveis = [item for nome, item in riscos.items() if nome != "terrenoOperacional" and item["score"] is not None]
     if disponiveis:
         pior = max(disponiveis, key=lambda item: item["score"])
         riscos["geral"] = {"score": pior["score"], "nivel": pior["nivel"], "criterio": "maior_score_disponivel"}

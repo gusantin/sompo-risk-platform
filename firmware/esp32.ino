@@ -1,323 +1,226 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
+#include <esp_system.h>
+#include "secrets.h"
 
-// =====================================================
-// CONFIGURAÇÃO DO WIFI
-// =====================================================
-
-// ATENÇÃO: o nome precisa ser EXATAMENTE igual ao hotspot
-const char* WIFI_SSID = "iPhone de Gustavo";
-const char* WIFI_PASSWORD = "gustavo97";
-
-// IP do computador rodando o Flask
-const char* SERVER_URL = "http://172.20.10.6:5000/dados";
-
-// =====================================================
-// CONFIGURAÇÃO DO DHT11
-// =====================================================
+// Copie secrets.example.h para secrets.h e mantenha credenciais fora do Git.
+const char* WIFI_SSID = WIFI_SSID_VALUE;
+const char* WIFI_PASSWORD = WIFI_PASSWORD_VALUE;
+const char* SERVER_URL = SERVER_URL_VALUE;
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT11
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
-// =====================================================
-// INTERVALOS
-// =====================================================
+const unsigned long INTERVALO_LEITURA_MS = 5000;
+const unsigned long INTERVALO_RECONEXAO_MS = 15000;
+const unsigned long INTERVALO_RETRY_HTTP_MS = 5000;
+const uint16_t TIMEOUT_HTTP_MS = 5000;
 
-unsigned long ultimoEnvio = 0;
+unsigned long ultimaLeitura = 0;
 unsigned long ultimaTentativaWiFi = 0;
+unsigned long ultimaTentativaHTTP = 0;
+uint32_t bootId = 0;
+uint32_t sequenciaLeitura = 0;
 
-const unsigned long intervaloEnvio = 5000;
-const unsigned long intervaloReconexao = 15000;
-
-// =====================================================
-// MOSTRAR STATUS WIFI
-// =====================================================
-
-void mostrarStatusWiFi()
+struct LeituraPendente
 {
-    Serial.print("Status WiFi: ");
+    bool ativa = false;
+    float temperatura = 0;
+    float umidade = 0;
+    String readingId;
+};
 
-    switch (WiFi.status())
-    {
-        case WL_CONNECTED:
-            Serial.println("CONECTADO");
-            break;
+LeituraPendente pendente;
 
-        case WL_NO_SSID_AVAIL:
-            Serial.println("REDE NAO ENCONTRADA");
-            break;
-
-        case WL_CONNECT_FAILED:
-            Serial.println("FALHA NA CONEXAO / SENHA INCORRETA");
-            break;
-
-        case WL_CONNECTION_LOST:
-            Serial.println("CONEXAO PERDIDA");
-            break;
-
-        case WL_DISCONNECTED:
-            Serial.println("DESCONECTADO");
-            break;
-
-        default:
-            Serial.print("CODIGO ");
-            Serial.println(WiFi.status());
-            break;
-    }
-}
-
-// =====================================================
-// CONECTAR AO WIFI
-// =====================================================
+enum ResultadoEnvio
+{
+    ENVIO_SUCESSO,
+    ENVIO_REJEITADO,
+    ENVIO_TENTAR_NOVAMENTE
+};
 
 bool conectarWiFi()
 {
-    Serial.println();
-    Serial.println("================================");
-    Serial.println("       CONECTANDO AO WIFI       ");
-    Serial.println("================================");
-
-    Serial.print("Rede: ");
-    Serial.println(WIFI_SSID);
-
-    // Evita conflito de tentativas anteriores
+    Serial.println("Conectando ao Wi-Fi...");
     WiFi.setAutoReconnect(false);
-
     WiFi.disconnect();
-
-    delay(1000);
-
-    WiFi.mode(WIFI_STA);
-
     delay(500);
-
-    // Uma única tentativa limpa
+    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    Serial.print("Conectando");
-
-    // Aguarda até 20 segundos
     unsigned long inicio = millis();
-
-    while (WiFi.status() != WL_CONNECTED &&
-           millis() - inicio < 20000)
+    while (WiFi.status() != WL_CONNECTED && millis() - inicio < 20000)
     {
-        Serial.print(".");
         delay(500);
+        Serial.print(".");
     }
-
     Serial.println();
 
-    if (WiFi.status() == WL_CONNECTED)
+    if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println();
-        Serial.println("================================");
-        Serial.println("        WIFI CONECTADO!         ");
-        Serial.println("================================");
-
-        Serial.print("IP do ESP32: ");
-        Serial.println(WiFi.localIP());
-
-        Serial.print("IP do servidor: ");
-        Serial.println("172.20.10.6");
-
-        Serial.print("Sinal WiFi: ");
-        Serial.print(WiFi.RSSI());
-        Serial.println(" dBm");
-
-        Serial.println();
-
-        WiFi.setAutoReconnect(true);
-
-        return true;
+        Serial.print("Falha no Wi-Fi. Status: ");
+        Serial.println(WiFi.status());
+        return false;
     }
 
-    Serial.println();
-    Serial.println("FALHA AO CONECTAR NO WIFI!");
-
-    mostrarStatusWiFi();
-
-    Serial.println();
-
-    return false;
+    WiFi.setAutoReconnect(true);
+    Serial.print("Wi-Fi conectado. IP do ESP32: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Endpoint: ");
+    Serial.println(SERVER_URL);
+    return true;
 }
 
-// =====================================================
-// ENVIAR TEMPERATURA E UMIDADE
-// =====================================================
+String novoReadingId()
+{
+    char buffer[64];
+    snprintf(
+        buffer,
+        sizeof(buffer),
+        "esp32_%08lx_%lu",
+        static_cast<unsigned long>(bootId),
+        static_cast<unsigned long>(sequenciaLeitura++)
+    );
+    return String(buffer);
+}
 
-void enviarDados(float temperatura, float umidade)
+ResultadoEnvio enviarDados(const LeituraPendente& leitura)
 {
     if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("Sem WiFi. Dados nao enviados.");
-        return;
+        Serial.println("Sem Wi-Fi; leitura mantida para nova tentativa.");
+        return ENVIO_TENTAR_NOVAMENTE;
     }
 
     HTTPClient http;
-
-    Serial.println();
-    Serial.println("Conectando ao webserver...");
-
-    http.setTimeout(5000);
-
-    http.begin(SERVER_URL);
+    http.setTimeout(TIMEOUT_HTTP_MS);
+    if (!http.begin(SERVER_URL))
+    {
+        Serial.println("Nao foi possivel inicializar a conexao HTTP.");
+        return ENVIO_TENTAR_NOVAMENTE;
+    }
 
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-Token", DEVICE_TOKEN_VALUE);
 
-    // =================================================
-    // MONTA JSON
-    // =================================================
-
-    String json = "{";
-
-    json += "\"temperatura\":";
-    json += String(temperatura, 2);
-
-    json += ",";
-
-    json += "\"umidade\":";
-    json += String(umidade, 2);
-
+    String json;
+    json.reserve(220);
+    json += "{\"deviceId\":\"";
+    json += DEVICE_ID_VALUE;
+    json += "\",\"readingId\":\"";
+    json += leitura.readingId;
+    json += "\",\"temperatura\":";
+    json += String(leitura.temperatura, 2);
+    json += ",\"umidade\":";
+    json += String(leitura.umidade, 2);
     json += "}";
 
-    Serial.println("JSON enviado:");
-    Serial.println(json);
-
-    // =================================================
-    // HTTP POST
-    // =================================================
+    Serial.print("Enviando leitura ");
+    Serial.print(leitura.readingId);
+    Serial.print(": temperatura=");
+    Serial.print(leitura.temperatura, 2);
+    Serial.print(" C, umidade=");
+    Serial.print(leitura.umidade, 2);
+    Serial.println(" %");
 
     int codigoHTTP = http.POST(json);
-
-    if (codigoHTTP > 0)
-    {
-        Serial.print("HTTP Status: ");
-        Serial.println(codigoHTTP);
-
-        String resposta = http.getString();
-
-        Serial.print("Resposta do servidor: ");
-        Serial.println(resposta);
-
-        if (codigoHTTP == 200)
-        {
-            Serial.println("DADOS ARMAZENADOS COM SUCESSO!");
-        }
-    }
-    else
-    {
-        Serial.print("ERRO HTTP: ");
-        Serial.println(codigoHTTP);
-
-        Serial.println("Nao foi possivel acessar o servidor.");
-    }
-
+    String resposta = codigoHTTP > 0 ? http.getString() : "";
     http.end();
 
-    Serial.println();
+    if (codigoHTTP == 200)
+    {
+        Serial.println("Leitura aceita pelo servidor.");
+        return ENVIO_SUCESSO;
+    }
+
+    Serial.print("Falha HTTP: ");
+    Serial.println(codigoHTTP);
+    if (resposta.length() > 0)
+    {
+        Serial.print("Resposta: ");
+        Serial.println(resposta);
+    }
+
+    if (codigoHTTP <= 0 || codigoHTTP == 408 || codigoHTTP == 429 || codigoHTTP >= 500)
+    {
+        Serial.println("Falha temporaria; a mesma readingId sera reenviada.");
+        return ENVIO_TENTAR_NOVAMENTE;
+    }
+
+    Serial.println("Leitura rejeitada de forma permanente; verifique contrato e credencial.");
+    return ENVIO_REJEITADO;
 }
 
-// =====================================================
-// SETUP
-// =====================================================
+void tentarEnviarPendente()
+{
+    if (!pendente.ativa || WiFi.status() != WL_CONNECTED)
+    {
+        return;
+    }
+    if (ultimaTentativaHTTP != 0 && millis() - ultimaTentativaHTTP < INTERVALO_RETRY_HTTP_MS)
+    {
+        return;
+    }
+
+    ultimaTentativaHTTP = millis();
+    ResultadoEnvio resultado = enviarDados(pendente);
+    if (resultado != ENVIO_TENTAR_NOVAMENTE)
+    {
+        pendente.ativa = false;
+    }
+}
 
 void setup()
 {
     Serial.begin(115200);
+    delay(1500);
+    Serial.println("ESP32 + DHT11 -> SOMPO Risk Platform");
 
-    delay(2000);
-
-    Serial.println();
-    Serial.println("======================================");
-    Serial.println("      ESP32 + DHT11 + WEBSERVER       ");
-    Serial.println("======================================");
-    Serial.println();
-
-    // Inicia sensor
+    bootId = esp_random();
     dht.begin();
-
-    // Conecta apenas UMA vez inicialmente
+    delay(2000);
     conectarWiFi();
-
     ultimaTentativaWiFi = millis();
 }
 
-// =====================================================
-// LOOP
-// =====================================================
-
 void loop()
 {
-    // =================================================
-    // RECONECTAR WIFI
-    // =================================================
-
-    if (WiFi.status() != WL_CONNECTED)
+    if (WiFi.status() != WL_CONNECTED &&
+        millis() - ultimaTentativaWiFi >= INTERVALO_RECONEXAO_MS)
     {
-        if (millis() - ultimaTentativaWiFi >= intervaloReconexao)
-        {
-            ultimaTentativaWiFi = millis();
-
-            conectarWiFi();
-        }
+        ultimaTentativaWiFi = millis();
+        conectarWiFi();
     }
 
-    // =================================================
-    // LEITURA A CADA 5 SEGUNDOS
-    // =================================================
+    tentarEnviarPendente();
 
-    if (millis() - ultimoEnvio >= intervaloEnvio)
+    if (millis() - ultimaLeitura < INTERVALO_LEITURA_MS)
     {
-        ultimoEnvio = millis();
-
-        float temperatura = dht.readTemperature();
-        float umidade = dht.readHumidity();
-
-        Serial.println();
-        Serial.println("----------- LEITURA -----------");
-
-        // =================================================
-        // VERIFICAR DHT
-        // =================================================
-
-        if (isnan(temperatura) || isnan(umidade))
-        {
-            Serial.println("ERRO AO LER DHT11!");
-            Serial.println("-------------------------------");
-
-            return;
-        }
-
-        // =================================================
-        // MOSTRAR NO SERIAL MONITOR
-        // =================================================
-
-        Serial.print("Temperatura: ");
-        Serial.print(temperatura, 2);
-        Serial.println(" C");
-
-        Serial.print("Umidade: ");
-        Serial.print(umidade, 2);
-        Serial.println(" %");
-
-        Serial.println("-------------------------------");
-
-        // =================================================
-        // ENVIAR AO SERVIDOR
-        // =================================================
-
-        if (WiFi.status() == WL_CONNECTED)
-        {
-            enviarDados(temperatura, umidade);
-        }
-        else
-        {
-            Serial.println("WiFi ainda nao conectado.");
-            Serial.println("Leitura realizada, mas nao enviada.");
-        }
+        return;
     }
+    ultimaLeitura = millis();
+
+    float temperatura = dht.readTemperature();
+    float umidade = dht.readHumidity();
+    if (isnan(temperatura) || isnan(umidade))
+    {
+        Serial.println("Falha ao ler o DHT11; nenhuma requisicao enviada.");
+        return;
+    }
+
+    if (pendente.ativa)
+    {
+        Serial.println("Servidor indisponivel; aguardando envio da leitura pendente.");
+        return;
+    }
+
+    pendente.ativa = true;
+    pendente.temperatura = temperatura;
+    pendente.umidade = umidade;
+    pendente.readingId = novoReadingId();
+    ultimaTentativaHTTP = 0;
+    tentarEnviarPendente();
 }

@@ -1,0 +1,542 @@
+{
+  "status": "ok",
+  "generatedAt": "2026-08-25T22:19:19.260040+00:00",
+  "startedAt": "2026-08-25T22:19:13.602221+00:00",
+  "environmentalDataReal": true,
+  "lookbackHours": 48,
+  "monitoredStates": [
+    "MT",
+    "MS",
+    "GO",
+    "MG",
+    "PR"
+  ],
+  "sourcesResponded": [
+    "INMET WIS2 / OGC API",
+    "INPE Programa Queimadas",
+    "Open-Meteo Forecast API"
+  ],
+  "cases": [
+    {
+      "id": "live_incendio_mt_novo_mundo",
+      "riskType": "incendio",
+      "risk": {
+        "score": 68,
+        "nivel": "alto",
+        "confianca": "alta",
+        "coberturaDadosPct": 100,
+        "fatores": [
+          {
+            "fator": "temperatura_alta",
+            "contribuicao": 25,
+            "descricao": "Temperatura atual elevada favorece ressecamento."
+          },
+          {
+            "fator": "umidade_relativa_baixa",
+            "contribuicao": 66,
+            "descricao": "Umidade relativa baixa eleva o potencial climático."
+          },
+          {
+            "fator": "rajadas",
+            "contribuicao": 35,
+            "descricao": "Rajadas podem favorecer propagação."
+          },
+          {
+            "fator": "ausencia_chuva",
+            "contribuicao": 100,
+            "descricao": "Pouca chuva prevista mantém condições secas."
+          },
+          {
+            "fator": "umidade_solo_baixa",
+            "contribuicao": 100,
+            "descricao": "Baixa umidade superficial do solo indica secura."
+          },
+          {
+            "fator": "foco_calor_proximo",
+            "contribuicao": 100,
+            "descricao": "Foco de calor observado pelo INPE em até 50 km; não confirma incêndio na propriedade."
+          }
+        ],
+        "potencialClimatico": {
+          "score": 60,
+          "nivel": "alto"
+        },
+        "focoCalorObservadoProximo": true,
+        "fontesConfianca": [
+          "Consulta recente ao Programa Queimadas do INPE."
+        ]
+      },
+      "riskExplanation": {
+        "risk": "incendio",
+        "level": "alto",
+        "score": 68,
+        "mainFactors": [
+          {
+            "fator": "temperatura_alta",
+            "contribuicao": 25,
+            "descricao": "Temperatura atual elevada favorece ressecamento."
+          },
+          {
+            "fator": "umidade_relativa_baixa",
+            "contribuicao": 66,
+            "descricao": "Umidade relativa baixa eleva o potencial climático."
+          },
+          {
+            "fator": "rajadas",
+            "contribuicao": 35,
+            "descricao": "Rajadas podem favorecer propagação."
+          },
+          {
+            "fator": "ausencia_chuva",
+            "contribuicao": 100,
+            "descricao": "Pouca chuva prevista mantém condições secas."
+          },
+          {
+            "fator": "umidade_solo_baixa",
+            "contribuicao": 100,
+            "descricao": "Baixa umidade superficial do solo indica secura."
+          }
+        ],
+        "evidence": [
+          {
+            "fator": "temperatura_alta",
+            "contribuicao": 25,
+            "descricao": "Temperatura atual elevada favorece ressecamento."
+          },
+          {
+            "fator": "umidade_relativa_baixa",
+            "contribuicao": 66,
+            "descricao": "Umidade relativa baixa eleva o potencial climático."
+          },
+          {
+            "fator": "rajadas",
+            "contribuicao": 35,
+            "descricao": "Rajadas podem favorecer propagação."
+          },
+          {
+            "fator": "ausencia_chuva",
+            "contribuicao": 100,
+            "descricao": "Pouca chuva prevista mantém condições secas."
+          },
+          {
+            "fator": "umidade_solo_baixa",
+            "contribuicao": 100,
+            "descricao": "Baixa umidade superficial do solo indica secura."
+          },
+          {
+            "fator": "foco_calor_proximo",
+            "contribuicao": 100,
+            "descricao": "Foco de calor observado pelo INPE em até 50 km; não confirma incêndio na propriedade."
+          }
+        ],
+        "missingData": [
+          "geospatial",
+          "history",
+          "iot"
+        ],
+        "confidence": "high",
+        "confidenceMeaning": "quality_and_coverage_of_input_data"
+      },
+      "property": {
+        "fazendaId": "live_incendio_mt_novo_mundo",
+        "nome": "Fazenda Demo — Novo Mundo",
+        "municipio": "NOVO MUNDO",
+        "estado": "MT",
+        "latitude": -9.6022,
+        "longitude": -55.128,
+        "demoData": true,
+        "environmentalDataReal": true,
+        "coordinateSource": "INPE Programa Queimadas",
+        "coordinateMethod": "observed_hotspot_coordinate",
+        "ibgeCode": null,
+        "culturas": []
+      },
+      "environmentalDataReal": true,
+      "analysisAt": "2026-08-25T22:19:17.407709+00:00",
+      "environmentalEvidence": [
+        {
+          "label": "Temperatura atual",
+          "value": 28.7,
+          "unit": "°C",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Umidade relativa atual",
+          "value": 37,
+          "unit": "%",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Precipitação atual",
+          "value": 0.0,
+          "unit": "mm",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Chuva acumulada prevista em 72 h",
+          "value": 0.1,
+          "unit": "mm",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Vento atual",
+          "value": 12.7,
+          "unit": "km/h",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Rajada máxima prevista em 72 h",
+          "value": 34.2,
+          "unit": "km/h",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Umidade mínima do solo prevista em 72 h",
+          "value": 0.032,
+          "unit": "m³/m³",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:16.886065+00:00"
+        },
+        {
+          "label": "Distância do foco mais próximo",
+          "value": 0.0,
+          "unit": "km",
+          "source": "INPE Programa Queimadas",
+          "observedAt": "2026-08-25T21:30:00+00:00"
+        }
+      ],
+      "dataCoverage": {
+        "weatherAvailable": true,
+        "satelliteAvailable": true,
+        "geospatialAvailable": false,
+        "historyAvailable": false,
+        "propertyContextAvailable": false,
+        "iotAvailable": false
+      },
+      "sourceHealth": {
+        "clima": {
+          "status": "ok",
+          "cacheHit": false,
+          "consultedAt": "2026-08-25T22:19:16.886065+00:00",
+          "attribution": "Open-Meteo Forecast API",
+          "observedAt": null
+        },
+        "inmet": {
+          "status": "ok",
+          "cacheHit": false,
+          "consultedAt": "2026-08-25T22:19:16.243497+00:00",
+          "attribution": "INMET WIS2 / OGC API",
+          "observedAt": "2026-08-25T21:00:00Z"
+        },
+        "queimadas": {
+          "status": "ok",
+          "cacheHit": false,
+          "consultedAt": "2026-08-25T22:19:13.602273+00:00",
+          "attribution": "INPE Programa Queimadas",
+          "observedAt": null
+        }
+      },
+      "provenance": {
+        "clima": {
+          "source": "Open-Meteo Forecast API",
+          "consultedAt": "2026-08-25T22:19:16.886065+00:00",
+          "status": "ok",
+          "cache": false
+        },
+        "inmet": {
+          "source": "INMET WIS2 / OGC API",
+          "consultedAt": "2026-08-25T22:19:16.243497+00:00",
+          "status": "ok",
+          "cache": false
+        },
+        "queimadas": {
+          "source": "INPE Programa Queimadas",
+          "consultedAt": "2026-08-25T22:19:13.602273+00:00",
+          "status": "ok",
+          "cache": false
+        }
+      },
+      "hotspots": {
+        "lookbackHours": 48,
+        "items": [
+          {
+            "id": "c89bf688-6da2-34d5-85d2-aa38153e0a22",
+            "latitude": -9.6022,
+            "longitude": -55.128,
+            "dataHoraUtc": "2026-08-25T21:30:00+00:00",
+            "detectedAt": "2026-08-25T21:30:00+00:00",
+            "idadeHoras": 0.82,
+            "ageHours": 0.82,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 0.0
+          },
+          {
+            "id": "e25b4e28-bd61-31a4-9712-70069a5e52bb",
+            "latitude": -9.6024,
+            "longitude": -55.1078,
+            "dataHoraUtc": "2026-08-25T21:30:00+00:00",
+            "detectedAt": "2026-08-25T21:30:00+00:00",
+            "idadeHoras": 0.82,
+            "ageHours": 0.82,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 2.21
+          },
+          {
+            "id": "224b5cd0-07de-3c30-b3cb-ffed3d530b5f",
+            "latitude": -9.6588,
+            "longitude": -55.0834,
+            "dataHoraUtc": "2026-08-25T21:30:00+00:00",
+            "detectedAt": "2026-08-25T21:30:00+00:00",
+            "idadeHoras": 0.82,
+            "ageHours": 0.82,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 7.97
+          },
+          {
+            "id": "be315baa-56b1-3cf8-ac5e-055ac3cc2c51",
+            "latitude": -9.6774,
+            "longitude": -55.1022,
+            "dataHoraUtc": "2026-08-25T21:30:00+00:00",
+            "detectedAt": "2026-08-25T21:30:00+00:00",
+            "idadeHoras": 0.82,
+            "ageHours": 0.82,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 8.83
+          },
+          {
+            "id": "8a0edbec-31c8-3c21-bc00-28ae4adaca39",
+            "latitude": -9.6776,
+            "longitude": -55.082,
+            "dataHoraUtc": "2026-08-25T21:30:00+00:00",
+            "detectedAt": "2026-08-25T21:30:00+00:00",
+            "idadeHoras": 0.82,
+            "ageHours": 0.82,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 9.78
+          },
+          {
+            "id": "0feef6de-0c1f-38d4-8a23-5cf20da1106f",
+            "latitude": -9.6024,
+            "longitude": -55.1078,
+            "dataHoraUtc": "2026-08-25T21:20:00+00:00",
+            "detectedAt": "2026-08-25T21:20:00+00:00",
+            "idadeHoras": 0.99,
+            "ageHours": 0.99,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 2.21
+          },
+          {
+            "id": "4589c76f-1dbb-3d21-af11-75368234718e",
+            "latitude": -9.6588,
+            "longitude": -55.0834,
+            "dataHoraUtc": "2026-08-25T21:20:00+00:00",
+            "detectedAt": "2026-08-25T21:20:00+00:00",
+            "idadeHoras": 0.99,
+            "ageHours": 0.99,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 7.97
+          },
+          {
+            "id": "de4c050b-9182-32d9-9437-79026213d581",
+            "latitude": -9.6774,
+            "longitude": -55.1022,
+            "dataHoraUtc": "2026-08-25T21:20:00+00:00",
+            "detectedAt": "2026-08-25T21:20:00+00:00",
+            "idadeHoras": 0.99,
+            "ageHours": 0.99,
+            "source": "INPE Programa Queimadas",
+            "satelite": "GOES-19",
+            "municipio": "NOVO MUNDO",
+            "uf": "MT",
+            "distanciaKm": 8.83
+          }
+        ],
+        "nearest": {
+          "id": "c89bf688-6da2-34d5-85d2-aa38153e0a22",
+          "latitude": -9.6022,
+          "longitude": -55.128,
+          "dataHoraUtc": "2026-08-25T21:30:00+00:00",
+          "detectedAt": "2026-08-25T21:30:00+00:00",
+          "idadeHoras": 0.82,
+          "ageHours": 0.82,
+          "source": "INPE Programa Queimadas",
+          "satelite": "GOES-19",
+          "municipio": "NOVO MUNDO",
+          "uf": "MT",
+          "distanciaKm": 0.0
+        }
+      },
+      "relevant": true
+    },
+    {
+      "id": "live_geada_pr_palmas",
+      "riskType": "geada",
+      "risk": {
+        "score": 0,
+        "nivel": "baixo",
+        "confianca": "alta",
+        "coberturaDadosPct": 100,
+        "fatores": [
+          {
+            "fator": "temperatura_minima",
+            "contribuicao": 0,
+            "descricao": "Temperatura mínima prevista nas próximas 72 h."
+          },
+          {
+            "fator": "temperatura_atual",
+            "contribuicao": 0,
+            "descricao": "Temperatura atual como indicador complementar."
+          }
+        ],
+        "fontesConfianca": [
+          "Observação recente do INMET sem divergência relevante nas variáveis comparáveis."
+        ]
+      },
+      "riskExplanation": {
+        "risk": "geada",
+        "level": "baixo",
+        "score": 0,
+        "mainFactors": [
+          {
+            "fator": "temperatura_minima",
+            "contribuicao": 0,
+            "descricao": "Temperatura mínima prevista nas próximas 72 h."
+          },
+          {
+            "fator": "temperatura_atual",
+            "contribuicao": 0,
+            "descricao": "Temperatura atual como indicador complementar."
+          }
+        ],
+        "evidence": [
+          {
+            "fator": "temperatura_minima",
+            "contribuicao": 0,
+            "descricao": "Temperatura mínima prevista nas próximas 72 h."
+          },
+          {
+            "fator": "temperatura_atual",
+            "contribuicao": 0,
+            "descricao": "Temperatura atual como indicador complementar."
+          }
+        ],
+        "missingData": [
+          "geospatial",
+          "history",
+          "iot"
+        ],
+        "confidence": "high",
+        "confidenceMeaning": "quality_and_coverage_of_input_data"
+      },
+      "property": {
+        "fazendaId": "live_geada_pr_palmas",
+        "nome": "Fazenda Demo — Palmas",
+        "municipio": "Palmas",
+        "estado": "PR",
+        "latitude": -26.452238343213782,
+        "longitude": -51.81200856640392,
+        "demoData": true,
+        "environmentalDataReal": true,
+        "coordinateSource": "IBGE Malhas v3",
+        "coordinateMethod": "polygon_centroid_inside",
+        "ibgeCode": "4117602",
+        "culturas": []
+      },
+      "environmentalDataReal": true,
+      "analysisAt": "2026-08-25T22:19:19.253765+00:00",
+      "environmentalEvidence": [
+        {
+          "label": "Temperatura mínima prevista em 72 h",
+          "value": 8.9,
+          "unit": "°C",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:19.251701+00:00"
+        },
+        {
+          "label": "Temperatura atual",
+          "value": 14.1,
+          "unit": "°C",
+          "source": "Open-Meteo Forecast API",
+          "observedAt": "2026-08-25T22:19:19.251701+00:00"
+        }
+      ],
+      "dataCoverage": {
+        "weatherAvailable": true,
+        "satelliteAvailable": true,
+        "geospatialAvailable": false,
+        "historyAvailable": false,
+        "propertyContextAvailable": false,
+        "iotAvailable": false
+      },
+      "sourceHealth": {
+        "clima": {
+          "status": "ok",
+          "cacheHit": false,
+          "consultedAt": "2026-08-25T22:19:19.251701+00:00",
+          "attribution": "Open-Meteo Forecast API",
+          "observedAt": null
+        },
+        "inmet": {
+          "status": "ok",
+          "cacheHit": false,
+          "consultedAt": "2026-08-25T22:19:18.611308+00:00",
+          "attribution": "INMET WIS2 / OGC API",
+          "observedAt": "2026-08-25T21:00:00Z"
+        }
+      },
+      "provenance": {
+        "clima": {
+          "source": "Open-Meteo Forecast API",
+          "consultedAt": "2026-08-25T22:19:19.251701+00:00",
+          "status": "ok",
+          "cache": false
+        },
+        "inmet": {
+          "source": "INMET WIS2 / OGC API",
+          "consultedAt": "2026-08-25T22:19:18.611308+00:00",
+          "status": "ok",
+          "cache": false
+        }
+      },
+      "hotspots": {
+        "lookbackHours": 48,
+        "items": [],
+        "nearest": null
+      },
+      "relevant": false
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Propriedades são demonstrativas; coordenadas e condições ambientais são reais.",
+    "Focos representam detecções por satélite nas últimas 48 horas e não confirmam incêndio na propriedade.",
+    "Previsão de geada usa o motor determinístico atual e não confirma dano ocorrido."
+  ]
+}

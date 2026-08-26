@@ -1,8 +1,12 @@
 """Observações oficiais do INMET publicadas pela OGC API do WIS2 Brasil."""
 
 import logging
+import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from urllib.parse import quote
+from xml.etree import ElementTree
 
 import requests
 
@@ -14,6 +18,50 @@ LOGGER = logging.getLogger(__name__)
 TIMEOUT = 20
 BASE_URL = "https://wis2bra.inmet.gov.br/oapi"
 COLECAO = quote("urn:wmo:md:br-inmet:synop", safe="")
+ALERTAS_RSS_URL = "https://apiprevmet3.inmet.gov.br/avisos/rss"
+ALERTAS_TIMEOUT = 3
+
+
+class _TabelaAvisoParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.celulas = []
+        self._celula = None
+
+    def handle_starttag(self, tag, _attrs):
+        if tag in {"th", "td"}:
+            self._celula = []
+
+    def handle_data(self, data):
+        if self._celula is not None:
+            self._celula.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in {"th", "td"} and self._celula is not None:
+            self.celulas.append(" ".join("".join(self._celula).split()))
+            self._celula = None
+
+
+def _normalizar_texto(valor):
+    texto = unicodedata.normalize("NFD", str(valor or ""))
+    return "".join(caractere for caractere in texto if unicodedata.category(caractere) != "Mn").lower()
+
+
+def _campos_aviso(descricao_html):
+    parser = _TabelaAvisoParser()
+    parser.feed(descricao_html or "")
+    return {
+        _normalizar_texto(chave): valor
+        for chave, valor in zip(parser.celulas[::2], parser.celulas[1::2])
+    }
+
+
+def _horario_inmet(valor):
+    correspondencia = re.match(r"^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})", str(valor or ""))
+    if not correspondencia:
+        return valor or None
+    ano, mes, dia, hora, minuto = correspondencia.groups()
+    return f"{dia}/{mes}/{ano} {hora}:{minuto}"
 
 
 def _agora():
@@ -143,4 +191,57 @@ def consultar_inmet(latitude, longitude):
             "status": "erro_api", "mensagem": str(erro),
             "consultadoEm": agora.isoformat(), "cache": False, "dados": {},
             "atribuicao": "INMET WIS2 / OGC API",
+        }
+
+
+def consultar_avisos_inmet():
+    """Retorna somente avisos cujo tipo oficial seja Tempestade, sem inferir fenômenos."""
+    chave = "inmet:avisos_meteorologicos"
+    armazenado = cache.obter(chave)
+    if armazenado:
+        armazenado["cache"] = True
+        return armazenado
+
+    agora = _agora()
+    try:
+        resposta = requests.get(ALERTAS_RSS_URL, timeout=ALERTAS_TIMEOUT)
+        resposta.raise_for_status()
+        raiz = ElementTree.fromstring(resposta.content)
+        avisos = []
+        for item in raiz.findall(".//item"):
+            titulo = item.findtext("title") or ""
+            link = item.findtext("link") or ""
+            campos = _campos_aviso(item.findtext("description"))
+            evento = campos.get("evento")
+            if _normalizar_texto(evento) != "tempestade":
+                continue
+            descricao = campos.get("descricao") or ""
+            texto_explicito = _normalizar_texto(f"{titulo} {descricao}")
+            avisos.append({
+                "id": link.rstrip("/").rsplit("/", 1)[-1] or titulo,
+                "eventType": evento,
+                "severity": campos.get("severidade"),
+                "status": campos.get("status"),
+                "startsAt": _horario_inmet(campos.get("inicio")),
+                "endsAt": _horario_inmet(campos.get("fim")),
+                "publishedAt": item.findtext("pubDate"),
+                "description": descricao,
+                "location": campos.get("area"),
+                "hailExplicit": "granizo" in texto_explicito,
+                "source": "INMET Avisos Meteorológicos",
+                "sourceUrl": link,
+            })
+        resultado = {
+            "status": "ok", "mensagem": None, "consultadoEm": agora.isoformat(),
+            "cache": False, "dados": {"items": avisos},
+            "atribuicao": "INMET Avisos Meteorológicos (RSS)",
+        }
+        cache.salvar(chave, resultado, 5 * 60)
+        return resultado
+    except (requests.RequestException, ElementTree.ParseError, ValueError) as erro:
+        LOGGER.warning("Falha ao consultar avisos meteorológicos do INMET: %s", erro)
+        return {
+            "status": "erro_api", "mensagem": str(erro),
+            "consultadoEm": agora.isoformat(), "cache": False, "dados": {"items": []},
+            "atribuicao": "INMET Avisos Meteorológicos (RSS)",
         }
