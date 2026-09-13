@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 const base = process.env.FRONTEND_URL || "http://127.0.0.1:3000";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", headless: true });
 await mkdir("artifacts", { recursive: true });
@@ -37,7 +38,7 @@ try {
     }
     return route.fulfill({ json: { items: [alert], actionsEnabled } });
   });
-  await page.goto(base, { waitUntil: "networkidle" });
+  await page.goto(`${base}/?mode=backend`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Atualizar dados" }).click();
   await page.getByRole("button", { name: "Reconhecer", exact: true }).waitFor();
   await page.getByRole("heading", { name: "SOMPO Control Center", exact: true }).waitFor();
@@ -104,9 +105,22 @@ try {
     res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(body));
   });
   // Local contract fixture only; refuses to replace an existing backend on this port.
-  await new Promise((resolve, reject) => { stub.once("error", reject); stub.listen(5000, "127.0.0.1", resolve); });
+  await new Promise((resolve, reject) => { stub.once("error", reject); stub.listen(0, "127.0.0.1", resolve); });
+  const adapterBase = "http://127.0.0.1:3213";
+  const adapterServer = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3213"], {
+    windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, NODE_ENV: "production", SOMPO_BACKEND_URL: `http://127.0.0.1:${stub.address().port}`, SOMPO_BACKEND_API_KEY: "fixture-only-key" },
+  });
+  let serverLogs = "";
+  adapterServer.stdout.on("data", (data) => { serverLogs += data; });
+  adapterServer.stderr.on("data", (data) => { serverLogs += data; });
   try {
-    const adapted = await (await context.request.get(`${base}/api/command-center`)).json();
+    for (let i = 0; i < 100 && !serverLogs.includes("Ready"); i++) {
+      assert.equal(adapterServer.exitCode, null, serverLogs);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert(serverLogs.includes("Ready"), serverLogs);
+    const adapted = await (await context.request.get(`${adapterBase}/api/command-center`)).json();
     assert.equal(adapted.source, "backend");
     assert.equal(adapted.properties.length, 1, "DEMO properties must be excluded");
     assert.equal(adapted.properties[0].score, null);
@@ -118,9 +132,13 @@ try {
     assert.equal(adapted.machines[0].temperature, null);
     assert.equal(adapted.machineInventoryAvailable, true);
     inventoryUnavailable = true;
-    const partial = await (await context.request.get(`${base}/api/command-center`)).json();
+    const partial = await (await context.request.get(`${adapterBase}/api/command-center`)).json();
     assert.equal(partial.machineInventoryAvailable, false, "Failed inventory reads must remain unavailable");
-  } finally { await new Promise((resolve) => stub.close(resolve)); }
+  } finally {
+    adapterServer.kill();
+    await new Promise((resolve) => adapterServer.once("exit", resolve));
+    await new Promise((resolve) => stub.close(resolve));
+  }
   console.log("PASS: both views, desktop/mobile, client scope, acknowledge/resolve, write gate and no runtime errors.");
   console.log("PASS: real BFF adapters preserve missing risk/telemetry/coordinates and exclude DEMO properties.");
 } finally { await browser.close(); }

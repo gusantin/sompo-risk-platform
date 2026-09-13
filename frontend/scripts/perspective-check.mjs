@@ -16,11 +16,11 @@ try {
   for (const perspective of ["seguradora", "segurado"]) {
     const response = await context.request.post(`${base}/api/perspectives/${perspective}/agent`, { data: { question: "Quem foi notificado?", snapshotGeneratedAt: all.generatedAt, perspective: "seguradora", clientScope: "Cliente C" } });
     assert.equal(response.status(), 200);
-    const answer = await response.json(); assert.equal(answer.readOnly, true);
-    if (perspective === "segurado") { assert.equal(answer.trace.consultedIds.length, 2); assert.doesNotMatch(JSON.stringify(answer), /Cliente B|Cliente C|pocone|dourados/); }
+    const answer = await response.json(); assert.match(answer.answer, /Consulta determinística da captura/);
+    if (perspective === "segurado") { for (const p of own.properties) assert(answer.answer.includes(p.name)); assert.doesNotMatch(JSON.stringify(answer), /Cliente B|Cliente C|pocone|dourados/); }
   }
   const denied = await context.request.post(`${base}/api/perspectives/segurado/agent`, { data: { question: "Qual risco?", snapshotGeneratedAt: own.generatedAt, contextPropertyId: "demo_portfolio_dourados" } });
-  assert.equal(denied.status(), 400);
+  assert.equal(denied.status(), 404);
   for (const width of [390, 1366, 1440, 1920]) for (const perspective of ["seguradora", "segurado"]) {
     const page = await context.newPage();
     await page.setViewportSize({ width, height: 900 });
@@ -42,10 +42,9 @@ try {
       await page.reload({ waitUntil: "networkidle" });
       await page.getByLabel("Detalhe da fazenda").getByRole("heading", { name: "Fazenda Araguaia", exact: true }).waitFor();
     } else {
-      await page.getByLabel("Prioridades dos clientes").getByText("Cliente A", { exact: true }).locator("..").locator("..").getByRole("button", { name: "Abrir cliente" }).click();
+      await page.getByRole("navigation", { name: "Clientes da carteira" }).getByRole("button", { name: "Cliente A", exact: true }).click();
       assert.equal(await page.getByTestId("farm-card").count(), 2);
-      assert.match(page.url(), /\/seguradora\?/);
-      await page.getByRole("button", { name: /Fazenda Araguaia Confresa/ }).click();
+      await page.getByTestId("farm-card").filter({ hasText: "Fazenda Araguaia" }).getByRole("button").click();
       await page.getByLabel("Detalhe da fazenda").waitFor();
       assert.match(page.url(), /\/seguradora\?/);
     }
@@ -57,6 +56,13 @@ try {
   // Isolated browser fixture: exercise creation/loading without changing the real snapshot.
   const page = await context.newPage();
   await page.goto(`${base}/segurado`, { waitUntil: "networkidle" });
+  const creationEnabled = process.env.TEST_CREATION_ENABLED === "1";
+  if (!creationEnabled) {
+    await page.getByRole("button", { name: "Adicionar fazenda", exact: true }).click();
+    await page.getByRole("status").filter({ hasText: /cadastro e persistência desabilitados/ }).waitFor();
+    assert.equal(await page.getByRole("form", { name: "Adicionar fazenda" }).count(), 0);
+    assert.equal((await context.request.post(`${base}/api/insured/properties`, { data: { nome: "Test" } })).status(), 403);
+  } else {
   const fixture = structuredClone(own);
   const pending = { ...fixture.properties[0], id: "demo_portfolio_test_new", name: "Fazenda Teste", level: "unknown", score: null, factors: [], environmentalContext: undefined, processingState: "waiting", environmentalValues: [], provenance: { identity: "demo", environmental: { origin: "unavailable", state: "unavailable" } } };
   fixture.properties.push(pending);
@@ -72,10 +78,12 @@ try {
   await page.getByLabel("Município", { exact: true }).fill("Sorriso");
   await page.getByLabel("UF", { exact: true }).fill("MT");
   await page.getByRole("button", { name: "Salvar e analisar", exact: true }).click();
-  await page.getByText("Aguardando dados", { exact: true }).waitFor();
+  await page.getByRole("region", { name: "Detalhe da fazenda", exact: true }).getByRole("heading", { name: "Fazenda Teste", exact: true }).waitFor();
+  await page.getByRole("region", { name: "Detalhe da fazenda", exact: true }).getByText("Sem dados", { exact: true }).waitFor();
   await page.getByRole("status").getByText(/Analisando condições/).waitFor();
   assert.equal(await page.getByLabel("Detalhe da fazenda").getByText(/61.*100/).count(), 0);
   release(); await page.getByRole("status").getByText("Dados ambientais indisponíveis", { exact: true }).waitFor();
+  }
   await page.close();
   console.log("PASS perspectives: backend/BFF scope, Copilot isolation, maps, two farms, URL switching without reload, safe creation; both routes at 390/1366/1440/1920px.");
 } finally { await browser.close(); }

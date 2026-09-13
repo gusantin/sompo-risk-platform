@@ -10,9 +10,9 @@ export function EnvironmentalConditions({ context, compact = false }: { context?
   const detail = context.sections.filter((s) => /Previsão de (6|12|72)h/.test(s.title));
   function section(s: EnvironmentalContext["sections"][number]) {
     const facts = s.facts.filter((f) => f.value !== null && f.fetchedAt);
-    return <div key={s.title} className="min-w-0 rounded-lg bg-slate-50 p-3">
+    return <div key={s.title} data-environment-section={s.title === "Última leitura ambiental" ? "observation" : "context"} className="min-w-0 rounded-lg bg-slate-50 p-3">
       <h4 className="text-xs font-semibold text-slate-800">{s.title}</h4>
-      <ul className="mt-1 space-y-1 text-xs text-slate-600">{s.lines.map((line, i) => <li key={i}>{s.title === "Avisos oficiais" ? line.split(" · ").slice(0, 3).join(" · ") : line}</li>)}</ul>
+      <ul className="mt-1 space-y-1 text-xs text-slate-600">{s.lines.map((line, i) => <li key={i}>{s.title === "Última leitura ambiental" && line.includes(": ") ? <><span className="environment-metric-label">{line.slice(0, line.indexOf(": "))}: </span><strong className="environment-metric-value">{line.slice(line.indexOf(": ") + 2)}</strong></> : s.title === "Avisos oficiais" ? line.split(" · ").slice(0, 3).join(" · ") : line}</li>)}</ul>
       {s.title === "Avisos oficiais" && facts.length > 0 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Descrição e vigência dos avisos</summary>{s.lines.map((line, i) => <p className="mt-2" key={i}>{line}</p>)}</details>}
       {!!facts.length && <details className="mt-2 text-[10px] text-slate-500"><summary className="cursor-pointer">Fontes e horários</summary>
         {[...new Map(facts.map((f) => [JSON.stringify([f.source, f.fetchedAt, f.observedAt, f.forecastFor, f.freshness]), f])).values()].map((f, i) => <p key={i} className="mt-1 break-words">{f.source} · {f.freshness === "stale" || (f.fetchedAt && Date.now() - Date.parse(f.fetchedAt) > 21600000) ? "Leitura real desatualizada" : "Última leitura real"} · consulta {date(f.fetchedAt)}{f.observedAt ? ` · observação ${date(f.observedAt)}` : ""}{f.forecastFor ? ` · previsão ${date(f.forecastFor.start)} a ${date(f.forecastFor.end)}` : ""}</p>)}

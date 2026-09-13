@@ -16,10 +16,10 @@ try {
     const reply = await context.request.post(`${base}/api/agent`, { data: { question, mode: "portfolio", snapshotGeneratedAt: data.generatedAt } });
     assert.equal(reply.status(), 200);
     const answer = await reply.json();
-    assert.equal(answer.readOnly, true);
-    assert.equal(answer.snapshotGeneratedAt, data.generatedAt);
-    assert.match(answer.answer, /demonstrativa/);
-    assert.doesNotMatch(answer.answer, /ao vivo|incêndio confirmado/);
+    assert.match(answer.answer, /Consulta determinística da captura, sem interpretação por IA/);
+    assert.match(answer.answer, /não ao vivo/);
+    assert.doesNotMatch(answer.answer, /incêndio confirmado/);
+    assert.equal(answer.contextPropertyId, null);
   }
   for (const property of data.properties) {
     assert.equal(property.propertyDemo, true);
@@ -54,7 +54,7 @@ try {
     assert.equal(agentRequest.contextPropertyId, selected.id);
     assert.equal(agentRequest.mode, "portfolio");
     assert.equal(agentRequest.snapshotGeneratedAt, data.generatedAt);
-    await page.getByLabel("Assistente de Risco", { exact: true }).getByText(/não representam segurados SOMPO/).waitFor();
+    await page.getByLabel("Assistente de Risco", { exact: true }).getByText(/Identidades fictícias/).waitFor();
     assert.equal(await page.getByLabel("Assistente de Risco", { exact: true }).getByText(new RegExp(data.properties[0].name)).count(), 0);
     await page.getByRole("button", { name: "Fechar assistente", exact: true }).click();
     await scope.getByText("O que fazer agora?", { exact: true }).waitFor();

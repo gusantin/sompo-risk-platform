@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "visual-check": "node scripts/visual-check.mjs",
-    "product-check": "node scripts/product-check.mjs"
+    "product-check": "node scripts/product-check.mjs",
+    "quality-check": "node scripts/quality-check.mjs",
+    "quality:states": "node scripts/ui-state-check.mjs",
+    "quality:development": "node scripts/development-check.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -22,6 +25,7 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.0",

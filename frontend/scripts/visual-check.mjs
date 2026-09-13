@@ -22,7 +22,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const demo = await (await page.request.get(`${baseURL}/api/command-center?mode=demo`)).json();
     await page.route("**/api/command-center", (route) => route.fulfill({ json: demo }));
-    await page.goto(baseURL, { waitUntil: "networkidle", timeout: 30_000 });
+    await page.goto(`${baseURL}/?mode=backend`, { waitUntil: "networkidle", timeout: 30_000 });
     await page.getByRole("heading", { name: "SOMPO Control Center", exact: true }).waitFor();
     await page.getByRole("button", { name: "Atualizar dados" }).click();
     await page.getByRole("button", { name: /Abrir detalhes de/i }).first().waitFor();
