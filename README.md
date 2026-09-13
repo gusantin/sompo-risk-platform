@@ -1,5 +1,7 @@
 # SOMPO Risk Platform
 
+Deploy de apresentação sem Flask: [configuração Vercel, dados e validação](docs/VERCEL_PRESENTATION.md).
+
 Entradas: `/seguradora` e `/segurado`. Consulte [rotas, cadastro e limites de acesso](docs/PRODUCT_PERSPECTIVES.md).
 
 A [carteira de apresentação](docs/PRESENTATION_PORTFOLIO.md) separa três identidades fictícias de dados ambientais reais, com consulta atual, última captura real e modo sintético explícito. Inclui comandos, fontes e limites.

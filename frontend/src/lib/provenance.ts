@@ -7,5 +7,6 @@ export function provenanceLabel(property: PropertyView) {
 }
 
 export function exposureHeading(property: PropertyView) {
-  return property.provenance?.environmental.state === "stale" ? "Último risco conhecido" : "Risco atual";
+  const state = property.provenance?.environmental.state;
+  return state === "stale" || state === "real_cached" ? "Último risco conhecido" : "Risco atual";
 }

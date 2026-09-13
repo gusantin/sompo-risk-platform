@@ -1,6 +1,7 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { backendUrl, isPresentationDeployment } from "@/lib/backend-config";
+import bundledPortfolio from "@/data/presentation-portfolio.json";
 
 import { getDemoData } from "@/lib/demo-data";
 import type { CommandCenterData, EnvironmentalContext, ExplainableFactor, HotspotView, LiveEvent, MachineView, PropertyView, RiskLevel, StateSummary } from "@/lib/types";
@@ -67,7 +68,8 @@ function trendDirection(value: unknown): PropertyView["trend"] {
 }
 
 async function backendFetch(path: string, timeoutMs = 3500): Promise<JsonRecord> {
-  const base = process.env.SOMPO_BACKEND_URL || "http://127.0.0.1:5000";
+  const base = backendUrl();
+  if (!base) throw new Error("Backend not configured");
   const apiKey = process.env.SOMPO_BACKEND_API_KEY;
   const headers: HeadersInit = { Accept: "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
@@ -452,19 +454,42 @@ function liveProperty(caseItem: JsonRecord): PropertyView | null {
   };
 }
 
+function validPortfolio(value: unknown): value is JsonRecord {
+  const payload = record(value);
+  return payload.schema === "presentation_real_portfolio_v1" && Boolean(text(payload.generatedAt)) &&
+    Array.isArray(payload.cases) && payload.cases.length > 0 && payload.cases.every((item) => {
+      const c = record(item), p = record(c.property), context = record(c.environmentalContext);
+      return Boolean(text(c.id) && text(p.fazendaId) && text(p.nome) && text(p.clientName)) &&
+        (!c.environmentalContext || Array.isArray(context.sections));
+    });
+}
+
 export async function loadPortfolioData(refresh = false, perspective?: "seguradora" | "segurado"): Promise<CommandCenterData> {
-  let payload: JsonRecord;
-  if (refresh) {
-    const base = (process.env.SOMPO_BACKEND_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
-    const key = process.env.SOMPO_BACKEND_API_KEY;
-    const response = await fetch(`${base}/showcase/portfolio?refresh=true`, { cache: "no-store", signal: AbortSignal.timeout(180000), headers: key ? { Authorization: `Bearer ${key}` } : {} });
-    if (!response.ok) throw new Error("Real refresh unavailable");
-    payload = record(await response.json());
-  } else {
-    try { payload = await backendFetch(perspective ? `/showcase/perspectives/${perspective}` : "/showcase/portfolio"); }
-    catch { payload = record(JSON.parse(await readFile(/* turbopackIgnore: true */ process.env.PRESENTATION_PORTFOLIO_PATH || resolve(process.cwd(), "../data/presentation_portfolio.json"), "utf8"))); }
+  let payload: JsonRecord | null = null;
+  let backendAvailable = false;
+  let liveRefresh = false;
+  if (backendUrl()) {
+    try {
+      const candidate = await backendFetch(refresh ? "/showcase/portfolio?refresh=true" : perspective ? `/showcase/perspectives/${perspective}` : "/showcase/portfolio", 3500);
+      if (validPortfolio(candidate)) {
+        payload = candidate;
+        backendAvailable = true;
+        liveRefresh = refresh;
+      }
+    } catch { /* Expected network/provider failure: read the presentation snapshot. */ }
   }
-  if (payload.schema !== "presentation_real_portfolio_v1") throw new Error("Invalid real snapshot");
+  if (!payload && !isPresentationDeployment() && process.env.PRESENTATION_PORTFOLIO_PATH) {
+    try {
+      const candidate = JSON.parse(await readFile(/* turbopackIgnore: true */ process.env.PRESENTATION_PORTFOLIO_PATH, "utf8"));
+      if (validPortfolio(candidate)) payload = candidate;
+    } catch { /* Optional local development override. */ }
+  }
+  if (!payload && validPortfolio(bundledPortfolio)) payload = bundledPortfolio;
+  if (!payload) return { ...unavailableData(), requestMode: "portfolio", presentationMode: "snapshot",
+    notices: ["Captura de apresentação indisponível. Tente novamente mais tarde."] };
+  // Never mutate a module singleton: concurrent insured requests must not shrink the insurer portfolio.
+  payload = structuredClone(payload);
+  refresh = liveRefresh;
   if (perspective === "segurado") payload.cases = array(payload.cases).filter((c) => record(c.property).clientName === "Cliente A");
   // The file fallback contains the same canonical context, possibly captured live.
   // Reading that file is always cached; only freshness metadata changes here.
@@ -525,8 +550,8 @@ export async function loadPortfolioData(refresh = false, perspective?: "segurado
   }
   return { source: "live", requestMode: "portfolio", presentationMode: refresh ? "live" : "snapshot", generatedAt: text(payload.generatedAt),
     properties, states: buildStates(properties), machines: [], machineInventoryAvailable: false, events, hotspots,
-    stale: properties.some((p) => p.provenance?.environmental.state === "stale"), backendAvailable: refresh,
-    notices: values(payload.limitations).map((v) => text(v)).filter(Boolean) };
+    stale: properties.some((p) => p.provenance?.environmental.state === "stale"), backendAvailable,
+    notices: [...(!backendAvailable ? ["Exibindo captura de apresentação armazenada, com horários originais; sem consulta ao vivo."] : []), ...values(payload.limitations).map((v) => text(v)).filter(Boolean)] };
 }
 
 function weatherEvents(payload: JsonRecord): LiveEvent[] {
@@ -768,7 +793,7 @@ export async function getCommandCenterData(mode?: string): Promise<CommandCenter
     }
   }
   if (mode === "demo") {
-    const path = process.env.SOMPO_DEMO_SCENARIO_PATH;
+    const path = isPresentationDeployment() ? undefined : process.env.SOMPO_DEMO_SCENARIO_PATH;
     if (!path) return getDemoData();
     try {
       const fixture = JSON.parse(await readFile(path, "utf8"));

@@ -1,9 +1,11 @@
+import { backendUrl } from "@/lib/backend-config";
 import { NextRequest, NextResponse } from "next/server";
 
 const allowedId = /^[a-zA-Z0-9_-]{1,128}$/;
 const actionsEnabled = () => process.env.NODE_ENV !== "production" && process.env.SOMPO_ENABLE_ALERT_ACTIONS === "true";
 async function proxy(path: string, init: RequestInit = {}) {
-  const base = (process.env.SOMPO_BACKEND_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
+  const base = backendUrl();
+  if (!base) throw new Error("Backend not configured");
   const key = process.env.SOMPO_BACKEND_API_KEY;
   const response = await fetch(`${base}${path}`, { ...init, cache: "no-store", signal: AbortSignal.timeout(10000),
     headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) } });

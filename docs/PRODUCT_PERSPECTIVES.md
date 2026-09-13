@@ -1,5 +1,7 @@
 # Perspectivas de apresentação
 
+Na Vercel, as perspectivas usam a captura publicável incluída no frontend quando não há backend disponível. Cadastro fica desabilitado com explicação; o Copilot oferece resumo determinístico do contexto armazenado, sem interpretação por IA. Veja [configuração e limites do deploy](VERCEL_PRESENTATION.md). O fluxo de cadastro descrito abaixo é local, em development/test.
+
 `/seguradora` apresenta três clientes fictícios, prioridades, detalhe do cliente e suas propriedades. `?cliente=Cliente+A&fazenda=demo_portfolio_confresa` mantém o detalhe dentro da experiência da seguradora.
 
 `/segurado` representa somente Cliente A, com Fazenda Araguaia (Confresa/MT) e Fazenda Horizonte (Sorriso/MT). `?fazenda=demo_portfolio_horizonte` preserva a seleção. A troca atualiza os componentes locais, mapa e Copilot sem recarregar o documento; voltar/avançar também restaura a seleção. Sem seleção, o Copilot compara as duas fazendas; com seleção, consulta apenas aquela fazenda.

@@ -20,7 +20,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_demo.ps1 -Offl
 
 Não execute dois helpers nas mesmas portas. `-Portfolio` desabilita envios e ações de escrita, permite consulta mesmo sem Firebase e não cria registros de clientes/alertas. O worker global não deve ser usado para testar formatação. A entrega real pela pipeline existente foi informada como comprovada pelo usuário; esta etapa não envia novas mensagens.
 
-`data/presentation_portfolio.json` é uma captura local ignorada pelo Git. `PRESENTATION_PORTFOLIO_PATH` configura o caminho no ambiente do servidor e do frontend. O arquivo deve estar disponível em runtime; não é incluído automaticamente no bundle. O frontend usa o backend quando disponível e pode ler a captura local para apresentação sem backend.
+`data/presentation_portfolio.json` é a captura canônica local ignorada pelo Git. O frontend em produção usa um backend explicitamente configurado ou a projeção publicável em `frontend/src/data/presentation-portfolio.json`, incluída no build. `PRESENTATION_PORTFOLIO_PATH` só configura uma leitura alternativa no frontend em desenvolvimento local; não é usado em produção. Veja [exportação, configuração e validação Vercel](VERCEL_PRESENTATION.md).
 
 ## Dados reais e fallback
 

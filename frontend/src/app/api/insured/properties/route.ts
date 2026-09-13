@@ -1,5 +1,7 @@
+import { backendUrl, isPresentationDeployment } from "@/lib/backend-config";
 export async function POST(request: Request) {
-  const base = (process.env.SOMPO_BACKEND_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
+  const base = backendUrl();
+  if (isPresentationDeployment() || !base) return Response.json({ mensagem: "Modo apresentação: cadastro e persistência desabilitados neste ambiente. Nenhuma fazenda foi salva." }, { status: 403 });
   const key = process.env.SOMPO_BACKEND_API_KEY;
   let body;
   try { body = await request.json(); } catch { return Response.json({}, { status: 400 }); }
