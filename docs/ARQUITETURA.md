@@ -105,7 +105,7 @@ open -> acknowledged -> resolved
 open -----------------> resolved
 ```
 
-Não há texto de IA nem notificações externas.
+Não há texto de IA nos alertas. A outbox opcional de notificações externas está descrita na seção de productização e em PRODUCTIZATION.md.
 
 ## Snapshots e consultas
 
@@ -157,6 +157,8 @@ O projeto não usa `firebase_admin`/gRPC. Coleções:
 
 ## Resiliência
 
+O hardening de apresentação mantém os contratos/motores: freshness de medição é distinta da conectividade; recomendações de máquina são compartilhadas entre status e Copilot; alterações de alerta usam a revisão Firestore para evitar sobrescrita concorrente. A exportação offline do seed passa pelos mesmos adaptadores do BFF, exclusivamente no modo DEMO explícito e sem mutações/notificações reais. Startup e recuperação estão em [PRESENTATION_RUNBOOK.md](PRESENTATION_RUNBOOK.md).
+
 Integrações externas rodam em paralelo com timeouts individuais e orçamento global. Uma fonte indisponível não apaga as demais. Falha ao persistir análise é informada sem apagar o risco calculado; eventos, alertas e snapshots só referenciam uma análise efetivamente persistida.
 
 Caches e rate limits são locais ao processo.
@@ -172,3 +174,12 @@ Um futuro beta regional selecionará UFs/municípios agrícolas prioritários; a
 O endpoint `POST /agent/query` usa o `AgroRiskAgent` existente do pacote `sompo-agro-agent-v2`, com `SYSTEM_PROMPT` adaptado ao fluxo oficial atual e provider Ollama. Antes da inferência, um roteamento determinístico monta um contexto limitado pelas tools read-only de risco atual, explicações, fatores, dados ausentes, máquinas, telemetria, hotspots, tendências, eventos e alertas.
 
 O agente não importa nem executa o `risk_engine.py`, o Firebase paralelo ou o `mock_data.py` presentes no pacote original. Os valores vêm dos snapshots e serviços do backend oficial; falhas do Ollama são explícitas e não ativam fallback mock.
+
+
+## Productização
+
+AlertService pode criar registros deduplicados em notifications. O worker explícito reivindica notification_attempts e usa TelegramChannel; falhas de entrega não alteram o risco. O agente continua read-only. O frontend usa duas perspectivas sobre os mesmos contratos, com ações locais opt-in e sem simular RBAC.
+
+A política filtra alertas oficiais acionáveis antes da outbox, mantém escalada por severidade/ocorrência e só enfileira encerramento após entrega comprovada da mesma ocorrência. Avisos meteorológicos entram via processamento explícito com vínculo conservador município/UF, nunca por GET. Claims persistidos protegem reinícios; backoff limita retries; respostas ambíguas ficam sem reenvio automático. Novos alertas usam criação atômica e alterações preservam precondição de revisão Firestore. Detalhes e limites: [PRODUCTIZATION.md](PRODUCTIZATION.md).
+
+Detalhes e limitações: [PRODUCTIZATION.md](PRODUCTIZATION.md).

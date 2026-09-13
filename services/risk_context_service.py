@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from integracoes.geoespacial import distancia_km, ponto_no_geojson
 from services.telemetria_service import TelemetriaService
+from services.environmental_context import build_environmental_context
 
 
 MOTOR_VERSION = "1.0.0"
@@ -185,4 +186,5 @@ class RiskContextService:
                 "operationalContextRisk": "calculado_por_maquina_com_regras_de_estado_explicitas",
             },
             "rawSources": fontes,
+            "environmentalContext": build_environmental_context(fontes, propriedade),
         }

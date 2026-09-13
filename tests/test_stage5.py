@@ -164,7 +164,7 @@ class EventAlertServiceTestCase(unittest.TestCase):
         self.assertEqual(first["eventId"], second["eventId"])
         self.assertEqual("device_offline", first["eventType"])
 
-    @patch("services.alert_service.upsert_documento", side_effect=lambda *args: args[-1])
+    @patch("services.alert_service.criar_documento", side_effect=lambda *args: args[-1])
     def test_alerta_criacao_dedupe_e_campos_explicaveis(self, _upsert):
         with patch.object(self.alert_service, "get", return_value=None):
             alert, deduped = self.alert_service.emit("machine_risk", "high", "f1", "machine",
@@ -311,7 +311,8 @@ class StatusApiTestCase(unittest.TestCase):
         self.assertEqual([], payload["machines"])
 
     def test_maquina_sem_telemetria_e_com_snapshot(self):
-        with patch.object(server.maquinas, "obter", return_value=MACHINE), \
+        with patch.object(server.propriedades, "obter", return_value={"id": "f1"}), \
+             patch.object(server.maquinas, "obter", return_value=MACHINE), \
              patch.object(server.snapshots, "get_machine", return_value=None), \
              patch.object(server.telemetria, "mais_recente", return_value=None), \
              patch.object(server.devices, "list", return_value=[]), \
@@ -321,7 +322,8 @@ class StatusApiTestCase(unittest.TestCase):
         self.assertEqual("unknown", missing["deviceHealth"]["status"])
         snapshot = {"deviceHealth": {"status": "online"}, "latestMeasurements": {"temp_motor": 80},
                     "machineRisk": {"level": "high"}, "operationalRisk": {"level": "high"}}
-        with patch.object(server.maquinas, "obter", return_value=MACHINE), \
+        with patch.object(server.propriedades, "obter", return_value={"id": "f1"}), \
+             patch.object(server.maquinas, "obter", return_value=MACHINE), \
              patch.object(server.snapshots, "get_machine", return_value=snapshot), \
              patch.object(server.snapshots, "get_property", return_value={}), \
              patch.object(server.alerts, "list", return_value=[]):

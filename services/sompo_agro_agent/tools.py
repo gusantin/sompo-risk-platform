@@ -4,6 +4,12 @@ import logging
 import unicodedata
 from datetime import datetime, timezone
 
+from services.recommendation_service import recommendations, machine_recommendations
+from services.device_service import DeviceService
+from services.telemetria_service import TelemetriaService
+from config import Config
+from services.event_service import normalize_level
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +52,7 @@ class AgroRiskTools:
     """Adapters de leitura; não calculam nem modificam risco."""
 
     def __init__(self, properties, snapshots, machines, telemetry, devices, events, alerts,
-                 live_case_loader, weather_alert_provider):
+                 live_case_loader, weather_alert_provider, notification_reader=None):
         self.properties = properties
         self.snapshots = snapshots
         self.machines = machines
@@ -56,10 +62,17 @@ class AgroRiskTools:
         self.alerts = alerts
         self.live_case_loader = live_case_loader
         self.weather_alert_provider = weather_alert_provider
+        self.notification_reader = notification_reader
 
     @staticmethod
     def definitions():
         return [
+            {
+                "type": "function", "name": "consultar_operacoes",
+                "description": "Resumo operacional de snapshots persistidos: prioridades, alertas por estado, recomendações e qualidade dos dados; recorte limitado, não totais globais.",
+                "parameters": {"type": "object", "properties": {"property_id": {"type": ["string", "null"]}}, "required": ["property_id"], "additionalProperties": False},
+                "strict": True,
+            },
             {
                 "type": "function", "name": "listar_propriedades_em_atencao",
                 "description": "Lista propriedades e os riscos correntes já calculados, sem recalcular scores.",
@@ -128,6 +141,7 @@ class AgroRiskTools:
             candidates = [risk for risk in risks.values() if isinstance(risk, dict) and risk.get("score") is not None]
             highest = max(candidates, key=lambda risk: risk.get("score", -1), default={})
             items.append({
+                "source": "persisted",
                 "propertyId": property_id, "name": prop.get("nome"), "municipality": prop.get("municipio"),
                 "state": prop.get("estado"), "propertyDemo": prop.get("demoData") is True,
                 "environmentalDataReal": True, "riskScore": highest.get("score"),
@@ -173,6 +187,7 @@ class AgroRiskTools:
                 "fireConfirmationMeaning": "Foco de calor por satélite não confirma incêndio na propriedade."
                     if nearest else "Nenhuma confirmação de incêndio está disponível.",
                 "sources": case.get("provenance") or {}, "sourceHealth": case.get("sourceHealth") or {},
+                "environmentalContext": case.get("environmentalContext"),
                 "dataCoverage": case.get("dataCoverage") or {}, "analysisAt": case.get("analysisAt"),
                 "snapshotGeneratedAt": live.get("generatedAt"), "limitations": live.get("limitations") or [],
                 "trend": None, "trendStatus": "indisponível no snapshot deste caso",
@@ -192,10 +207,12 @@ class AgroRiskTools:
                 "propertyDisclosure": "Propriedade demonstrativa."
                     if prop.get("demoData") is True else None,
                 "risk": (snapshot or {}).get("environmentalRisk"),
+                "environmentalContext": (snapshot or {}).get("environmentalContext"),
                 "explanation": (snapshot or {}).get("riskExplanations"),
                 "sources": (snapshot or {}).get("sourceHealth"), "dataCoverage": (snapshot or {}).get("coverage"),
                 "analysisAt": (snapshot or {}).get("analysisAt"), "trend": (snapshot or {}).get("trend"),
                 "status": "unavailable" if snapshot_error or not snapshot else "ok",
+                "hotspots": (snapshot or {}).get("hotspots") or {},
             })
         return {
             "tool": "consultar_contexto_da_propriedade", "readOnly": True, "consultedAt": _now_iso(),
@@ -284,7 +301,7 @@ class AgroRiskTools:
         return {"status": "available", "value": value, "unit": sensor.get("unit"),
                 "sensorId": sensor.get("sensorId"), "scope": sensor.get("scope"), "target": sensor.get("target")}
 
-    def machines_esp32(self, property_id=None, machine_query=None):
+    def machines_esp32(self, property_id=None, machine_query=None, limit=None):
         if property_id is not None and (not isinstance(property_id, str) or len(property_id) > 100):
             raise AgentValidationError("property_id inválido.")
         if machine_query is not None and (not isinstance(machine_query, str) or len(machine_query) > 200):
@@ -302,7 +319,7 @@ class AgroRiskTools:
             machine_items, error = _best_effort(lambda pid=current_property_id: self.machines.listar(pid), [])
             if error:
                 errors.append(error)
-            for machine in machine_items:
+            for machine in machine_items[:limit]:
                 machine_id = machine.get("maquinaId") or machine.get("id")
                 if query and not any(query in _normalize(candidate) or _normalize(candidate) in query
                                      for candidate in (machine_id, machine.get("nome")) if candidate):
@@ -324,16 +341,25 @@ class AgroRiskTools:
                     errors.append(state_error)
                 if device_error:
                     errors.append(device_error)
-                has_telemetry = bool(latest.get("latestTelemetryAt") or latest.get("lastSeenAt"))
+                freshness = TelemetriaService.classificar({"dataHora": latest.get("latestTelemetryAt"), "measurements": latest.get("latestMeasurements") or {}}, Config.IOT_MAX_AGE_SECONDS)
+                health = DeviceService.health(latest.get("lastSeenAt"), Config.DEVICE_STALE_AFTER_SECONDS, Config.DEVICE_OFFLINE_AFTER_SECONDS)
+                has_telemetry = freshness["fresh"]
+                risk = latest.get("machineRisk") or {}
+                if risk.get("status") == "insufficient_data":
+                    risk = {**risk, "level": "unknown"}
+                engine = self._engine_temperature(machine, latest)
+                if engine.get("status") == "available" and not has_telemetry:
+                    engine = {"status": "insufficient_data", "message": "Temperatura atual indisponível; telemetria ausente ou desatualizada."}
                 results.append({
                     "propertyId": current_property_id, "machineId": machine_id, "name": machine.get("nome"),
                     "machine": machine, "device": linked,
                     "physicalDeviceStatus": "telemetry_available" if has_telemetry else "no_physical_telemetry",
-                    "physicalDeviceMessage": None if has_telemetry else "Dispositivo físico ainda sem telemetria disponível.",
+                    "physicalDeviceMessage": None if has_telemetry else "Dispositivo físico sem telemetria atual disponível." if latest.get("latestTelemetryAt") else "Dispositivo físico ainda sem telemetria disponível.",
                     "latestTelemetryAt": latest.get("latestTelemetryAt"), "lastSeenAt": latest.get("lastSeenAt"),
-                    "deviceHealth": latest.get("deviceHealth"), "machineRisk": latest.get("machineRisk"),
-                    "operationalRisk": latest.get("operationalRisk"),
-                    "engineTemperature": self._engine_temperature(machine, latest),
+                    "deviceHealth": health, "telemetryFreshness": freshness, "machineRisk": risk,
+                    "recommendations": machine_recommendations(risk, health),
+                    "operationalRisk": {**(latest.get("operationalRisk") or {}), "level": "unknown"} if (latest.get("operationalRisk") or {}).get("status") == "insufficient_data" else latest.get("operationalRisk"),
+                    "engineTemperature": engine,
                 })
         message = None
         if not results:
@@ -341,11 +367,68 @@ class AgroRiskTools:
         return _json_safe({
             "tool": "consultar_maquinas_e_esp32", "readOnly": True, "consultedAt": _now_iso(),
             "consultedIds": [item.get("machineId") for item in results], "items": results,
-            "status": "unavailable" if errors and not results else "ok", "message": message,
+            "status": "unavailable" if errors and not results else "partial" if errors else "ok", "message": message,
             "semantics": "Temperatura do motor só é exposta para sensor configurado com scope e target de motor.",
         })
 
+    def operations(self, property_id=None):
+        """Read persisted operational evidence; never evaluate risk or mutate alerts."""
+        if property_id is not None and (not isinstance(property_id, str) or not property_id or len(property_id) > 100):
+            raise AgentValidationError("property_id inválido.")
+        props, prop_error = _best_effort(lambda: self.properties.listar(100), [])
+        props = [p for p in props if not p.get("demoData") and not str(p.get("fazendaId") or p.get("id") or "").startswith("demo_")]
+        if property_id:
+            props = [p for p in props if (p.get("fazendaId") or p.get("id")) == property_id]
+        errors = [prop_error] if prop_error else []
+        rows, machines = [], []
+        rank = {"critical": 4, "high": 3, "moderate": 2, "low": 1, "unknown": 0}
+        for prop in props[:20]:
+            pid = prop.get("fazendaId") or prop.get("id")
+            snapshot, error = _best_effort(lambda pid=pid: self.snapshots.get_property(pid), None)
+            if error:
+                errors.append(error)
+            environmental = (snapshot or {}).get("environmentalRisk") or {}
+            general = environmental.get("geral") or {}
+            level = "unknown" if general.get("status") == "insufficient_data" else normalize_level(general.get("nivel") or general.get("level"))
+            rows.append({"propertyId": pid, "name": prop.get("nome"), "level": level,
+                         "environmentalRisk": environmental, "analysisAt": (snapshot or {}).get("analysisAt"),
+                         "status": "ok" if snapshot else "unavailable"})
+            machine_result = self.machines_esp32(pid, limit=4)
+            if machine_result.get("status") != "ok":
+                errors.append("machines_unavailable")
+            for item in machine_result.get("items", []):
+                if (item.get("machine") or {}).get("demoData"):
+                    continue
+                machines.append(item)
+        filters = {"fazendaId": property_id} if property_id else {}
+        alerts, alert_error = _best_effort(lambda: self.alerts.list(filters, 100), [])
+        alerts = [{**a, "recommendations": recommendations(a)} for a in alerts
+                  if not a.get("demoData") and not str(a.get("fazendaId", "")).startswith("demo_")
+                  and (not property_id or a.get("fazendaId") == property_id)]
+        def timestamp(value):
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+            except (ValueError, TypeError):
+                return 0
+        alerts.sort(key=lambda a: (-rank.get(normalize_level(a.get("severity")), 0),
+                    {"open": 0, "acknowledged": 1, "resolved": 2}.get(a.get("status"), 3),
+                    -timestamp(a.get("lastTriggeredAt") or a.get("createdAt")), str(a.get("alertId"))))
+        for alert in alerts[:20]:
+            deliveries, error = _best_effort(lambda: self.notification_reader(alert["alertId"]), []) if self.notification_reader else ([], "notification_reader_unavailable")
+            alert["notifications"] = deliveries
+            alert["notificationStatus"] = "unavailable" if error else "persisted"
+        rows.sort(key=lambda p: (-rank.get(p["level"], 0), -timestamp(p.get("analysisAt")), str(p["propertyId"])))
+        return _json_safe({"tool": "consultar_operacoes", "readOnly": True, "consultedAt": _now_iso(),
+            "scope": "Até 20 propriedades persistidas, 4 máquinas por propriedade e 100 alertas recentes; não são totais globais. DEMO excluído.",
+            "ordering": "Severidade, estado aberto antes de reconhecido, ocorrência mais recente e identificador. Propriedades: severidade e análise mais recente.",
+            "properties": rows, "machines": machines, "alerts": alerts,
+            "alertCounts": None if alert_error else {state: sum(a.get("status") == state for a in alerts) for state in ("open", "acknowledged", "resolved")},
+            "sourceStatus": {"propertiesAndMachines": "unavailable_or_partial" if errors else "ok", "alerts": "unavailable" if alert_error else "ok"},
+            "consultedIds": [p["propertyId"] for p in rows]})
+
     def execute(self, name, arguments):
+        if name == "consultar_operacoes":
+            return self.operations(arguments.get("property_id"))
         if name == "listar_propriedades_em_atencao":
             return self.list_properties_attention()
         if name == "consultar_contexto_da_propriedade":
@@ -385,7 +468,12 @@ class AgroRiskTools:
 
     def get_agent_context(self, question, context_property_id=None):
         """Monta contexto limitado e rastreável sem delegar seleção factual ao LLM."""
+        normalized_question = _normalize(question)
+        operational = any(term in normalized_question for term in ("notific", "enviado", "telegram", "entreg", "prioriz", "carteira", "principal risco", "precisa", "preciso", "verificar primeiro", "reconhecid", "abert", "resolvid", "desatualiz", "maquinas", "qual maquina"))
         portfolio = self.list_properties_attention()
+        if operational:
+            portfolio = {**portfolio, "items": [item for item in portfolio.get("items", [])
+                         if item.get("source") == "persisted" and not item.get("propertyDemo")]}
         ranked = sorted(
             portfolio.get("items", []), key=lambda item: self._matches_question(question, item), reverse=True,
         )
@@ -404,13 +492,13 @@ class AgroRiskTools:
             matched = alternatives[0] if len(alternatives) == 1 else None
         if not matched and previous:
             matched = previous
-        if not matched and ranked and any(term in normalized_question for term in detail_terms):
+        if not matched and not operational and ranked and any(term in normalized_question for term in detail_terms):
             matched = ranked[0]
-        property_id = matched.get("propertyId") if matched else None
+        property_id = matched.get("propertyId") if matched else context_property_id
         context = {
             "origem_contexto": "backend_oficial_sompo",
             "somente_leitura": True,
-            "carteira": portfolio,
+            "carteira": {**portfolio, "items": [item for item in portfolio.get("items", []) if not property_id or item.get("propertyId") == property_id]},
             "orientacoes_semanticas": {
                 "score": "Índice operacional /100; não é probabilidade.",
                 "hotspot": "Foco de calor por satélite não confirma incêndio.",
@@ -419,8 +507,17 @@ class AgroRiskTools:
             },
         }
         used_tools = ["listar_propriedades_em_atencao"]
-        if matched:
+        if matched or context_property_id:
             detail = self.property_context(property_id or matched.get("name"))
+            # Adapt persisted multi-category snapshots for the existing semantic formatter.
+            persisted_risks = detail.get("risk") or {}
+            if "geral" in persisted_risks:
+                prop = detail.get("property") or {}
+                detail = {**detail, "environmentalCategories": persisted_risks,
+                          "risk": persisted_risks.get("geral") or {},
+                          "property": {**prop, "name": prop.get("name") or prop.get("nome"),
+                              "municipality": prop.get("municipality") or prop.get("municipio"),
+                              "state": prop.get("state") or prop.get("estado"), "riskType": "ambiental"}}
             context["propriedade"] = detail
             context["fazenda_id"] = property_id
             context["analise"] = detail.get("risk")
@@ -428,6 +525,10 @@ class AgroRiskTools:
             if previous and previous.get("propertyId") != property_id and any(
                     term in normalized_question for term in ("compar", "outra fazenda", "outra propriedade")):
                 context["propriedade_anterior"] = self.property_context(previous.get("propertyId"))
+
+        if operational:
+            context["operacoes"] = self.operations(property_id or context_property_id)
+            used_tools.append("consultar_operacoes")
 
         alert_terms = ("alerta", "evento", "hotspot", "foco", "incendio", "queimada",
                        "granizo", "tempestade", "inmet", "meteorolog")
@@ -437,7 +538,7 @@ class AgroRiskTools:
 
         machine_terms = ("maquina", "trator", "esp32", "sensor", "telemetria", "motor", "dispositivo")
         if any(term in normalized_question for term in machine_terms):
-            context["maquinas_esp32"] = self.machines_esp32(property_id, question)
+            context["maquinas_esp32"] = self.machines_esp32(property_id)
             used_tools.append("consultar_maquinas_e_esp32")
 
         context["tools_consultadas"] = used_tools
@@ -516,6 +617,13 @@ class AgroRiskTools:
             self._append_section(lines, "FATORES REAIS DO MOTOR — MAIOR CONTRIBUIÇÃO PRIMEIRO", factors or [
                 "Dados insuficientes para explicar este nível.",
             ])
+            for category, result in (detail.get("environmentalCategories") or {}).items():
+                if category == "geral" or not isinstance(result, dict):
+                    continue
+                self._append_section(lines, self._risk_type_label(category).upper(), [
+                    f"Nível oficial: {result.get('nivel') or result.get('level') or 'indisponível'}",
+                    *[str(f.get('descricao') or f.get('fator') or '') if isinstance(f, dict) else str(f)
+                      for f in result.get('fatores', [])]])
 
             weather = []
             evidence_sources = []
@@ -602,7 +710,7 @@ class AgroRiskTools:
                 self._append_section(lines, "TENDÊNCIA", [
                     "Histórico insuficiente para afirmar aumento, queda ou estabilidade do risco.",
                 ])
-        else:
+        elif not context.get("operacoes"):
             portfolio_items = []
             for item in (context.get("carteira") or {}).get("items", []):
                 location = "/".join(str(value) for value in (item.get("municipality"), item.get("state")) if value)
@@ -612,8 +720,31 @@ class AgroRiskTools:
                 portfolio_items.append(f"{item.get('name') or location}: {score_text} — {level}")
             self._append_section(lines, "RESUMO DA CARTEIRA", portfolio_items or ["Dados indisponíveis."])
 
+        operations = context.get("operacoes")
+        if operations:
+            self._append_section(lines, "OPERAÇÕES OFICIAIS · RECORTE CONSULTADO", [operations["scope"], operations["ordering"],
+                f"Disponibilidade das fontes: {operations['sourceStatus']}", f"Alertas por estado: {operations['alertCounts']}"])
+            for prop in operations["properties"]:
+                self._append_section(lines, "PROPRIEDADE", [f"{prop['name'] or prop['propertyId']}: {prop['level']}; análise: {prop['analysisAt'] or 'indisponível'}",
+                    f"Categorias e fatores oficiais: {prop['environmentalRisk']}"])
+            for alert in operations["alerts"]:
+                self._append_section(lines, "ALERTA PERSISTIDO", [
+                    f"{alert.get('alertId')}: propriedade {alert.get('fazendaId')}; máquina {alert.get('maquinaId') or 'não informada'}; {alert.get('severity')}; {alert.get('status')}; {alert.get('riskType')}",
+                    f"Fatores: {alert.get('factors')}; criado: {alert.get('createdAt')}; reconhecido: {alert.get('acknowledgedAt')}; resolvido: {alert.get('resolvedAt')}",
+                    f"Notificações (leitura persistida, até 20 alertas): {alert.get('notificationStatus', 'fora do recorte')}; {alert.get('notifications', [])}. Entrega aceita pelo Telegram não comprova leitura humana.",
+                    *[r['text'] for r in alert['recommendations']]])
+            for machine in operations["machines"]:
+                self._append_section(lines, "MÁQUINA · ESTADO PERSISTIDO", [
+                    f"{machine.get('name') or machine.get('machineId')}; propriedade {machine.get('propertyId')}",
+                    f"Risco interno: {machine.get('machineRisk')}; operacional: {machine.get('operationalRisk')}",
+                    f"Qualidade: {machine.get('deviceHealth')}; telemetria: {machine.get('latestTelemetryAt') or machine.get('lastSeenAt') or 'indisponível'}",
+                    *[r["text"] for r in machine.get("recommendations", [])]])
+
         alerts = context.get("alertas_eventos") or {}
         alert_lines = []
+        for item in alerts.get("alerts") or []:
+            alert_lines.append(f"{item.get('alertId')}: {item.get('severity')}; {item.get('status')}; propriedade {item.get('fazendaId')}; {item.get('type')}")
+            alert_lines.extend(r['text'] for r in recommendations(item))
         for item in alerts.get("weatherAlerts") or []:
             alert_lines.append(" | ".join(str(value) for value in (
                 item.get("eventType"), item.get("severity"), item.get("source"),
@@ -637,10 +768,10 @@ class AgroRiskTools:
             machine_risk = item.get("machineRisk") or {}
             operational_risk = item.get("operationalRisk") or {}
             if machine_risk:
-                machine_lines.append(f"Risco da máquina: {machine_risk.get('nivel') or machine_risk.get('status')}")
+                machine_lines.append(f"Risco da máquina: {machine_risk.get('status') if machine_risk.get('status') == 'insufficient_data' else machine_risk.get('level') or machine_risk.get('nivel') or 'indisponível'}")
             if operational_risk:
                 machine_lines.append(
-                    f"Risco operacional: {operational_risk.get('nivel') or operational_risk.get('status')}",
+                    f"Risco operacional: {operational_risk.get('level') or operational_risk.get('nivel') or operational_risk.get('status')}",
                 )
         if context.get("maquinas_esp32") and not machine_lines:
             machine_lines.append(context["maquinas_esp32"].get("message") or "Dados de máquinas indisponíveis.")

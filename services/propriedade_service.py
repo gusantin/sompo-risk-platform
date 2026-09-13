@@ -170,6 +170,22 @@ class PropriedadeService:
     def __init__(self, firebase):
         self.firebase = firebase
 
+    @staticmethod
+    def criar_demonstrativa(fazenda_id, dados, salvar):
+        """Minimal presentation registration; no invented area, location or risk."""
+        validar_id(fazenda_id)
+        if not isinstance(dados, dict) or set(dados) - {"nome", "municipio", "estado"}:
+            raise ValidacaoPropriedadeError("Informe apenas nome, município e UF.")
+        estado = _texto(dados, "estado", True, 2).upper()
+        if estado not in ESTADOS:
+            raise ValidacaoPropriedadeError("UF inválida.")
+        prop = {"fazendaId": fazenda_id, "nome": _texto(dados, "nome", True, 200),
+                "municipio": _texto(dados, "municipio", True, 150), "estado": estado,
+                "clientName": "Cliente A", "demoData": True, "identityOrigin": "demonstration",
+                "createdAt": datetime.now(timezone.utc).isoformat()}
+        salvar(prop)
+        return prop
+
     def _args(self):
         self.firebase.initialize()
         return self.firebase.firestore_url, self.firebase.obter_token

@@ -1,6 +1,8 @@
 # Credenciais e configuração local
 .env
 firebase-key.json
+firebase-key.json.json
+data/presentation_portfolio.json
 firmware/secrets.h
 .pio/
 

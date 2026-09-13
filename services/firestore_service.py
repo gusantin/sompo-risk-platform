@@ -6,6 +6,15 @@ from urllib.parse import quote
 import requests
 
 
+class FirestoreConflictError(RuntimeError):
+    pass
+
+
+class FirestoreDocument(dict):
+    """Wire revision stays out of serialized application data."""
+    update_time = None
+
+
 def _python_firestore(valor):
     if "nullValue" in valor:
         return None
@@ -30,10 +39,11 @@ def _python_firestore(valor):
 
 
 def _documento_python(documento):
-    dados = {
+    dados = FirestoreDocument({
         chave: _python_firestore(valor)
         for chave, valor in documento.get("fields", {}).items()
-    }
+    })
+    dados.update_time = documento.get("updateTime")
     dados["id"] = documento.get("name", "").split("/")[-1]
     return dados
 
@@ -105,15 +115,18 @@ def deletar_documento(firestore_url, obter_token, colecao, documento_id, timeout
     return True
 
 
-def atualizar_documento(firestore_url, obter_token, colecao, documento_id, dados, timeout=20):
+def atualizar_documento(firestore_url, obter_token, colecao, documento_id, dados, timeout=20, update_time=None):
     resposta = requests.patch(
         f"{firestore_url}/{quote(colecao, safe='/')}/{quote(documento_id, safe='')}",
         headers={"Authorization": f"Bearer {obter_token()}", "Content-Type": "application/json"},
         json={"fields": {chave: _valor_firestore(valor) for chave, valor in dados.items()}},
+        **({"params": {"currentDocument.updateTime": update_time}} if update_time else {}),
         timeout=timeout,
     )
     if resposta.status_code == 404:
         return None
+    if update_time and resposta.status_code in (409, 412):
+        raise FirestoreConflictError("Documento alterado por outra operação; consulte o estado atual.")
     if resposta.status_code != 200:
         raise RuntimeError(f"Firebase HTTP {resposta.status_code}: {resposta.text}")
     return _documento_python(resposta.json())

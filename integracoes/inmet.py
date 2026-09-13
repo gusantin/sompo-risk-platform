@@ -1,6 +1,8 @@
 """Observações oficiais do INMET publicadas pela OGC API do WIS2 Brasil."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -20,6 +22,83 @@ BASE_URL = "https://wis2bra.inmet.gov.br/oapi"
 COLECAO = quote("urn:wmo:md:br-inmet:synop", safe="")
 ALERTAS_RSS_URL = "https://apiprevmet3.inmet.gov.br/avisos/rss"
 ALERTAS_TIMEOUT = 3
+_CAP_LOCK = Lock()
+
+
+def parse_cap(content):
+    ns = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
+    root = ElementTree.fromstring(content)
+    if root.tag != "{urn:oasis:names:tc:emergency:cap:1.2}alert":
+        raise ValueError("Not an official CAP document")
+    if root.findtext("cap:status", namespaces=ns) != "Actual" or root.findtext("cap:msgType", namespaces=ns) not in {"Alert", "Update"}:
+        return []
+    items = []
+    for info in root.findall("cap:info", ns):
+        if info.findtext("cap:language", default="pt-BR", namespaces=ns) not in {"pt-BR", "pt"}:
+            continue
+        params = {p.findtext("cap:valueName", namespaces=ns): p.findtext("cap:value", namespaces=ns) for p in info.findall("cap:parameter", ns)}
+        polygons = []
+        for polygon in info.findall("cap:area/cap:polygon", ns):
+            points = [[float(v) for v in pair.split(",")][::-1] for pair in (polygon.text or "").split()]
+            if len(points) >= 3 and all(len(p) == 2 and -180 <= p[0] <= 180 and -90 <= p[1] <= 90 for p in points):
+                polygons.append(points)
+        items.append({"id": root.findtext("cap:identifier", namespaces=ns), "source": "INMET CAP",
+            "eventType": info.findtext("cap:event", namespaces=ns), "severity": info.findtext("cap:severity", namespaces=ns),
+            "description": info.findtext("cap:description", default="", namespaces=ns),
+            "startsAt": info.findtext("cap:onset", namespaces=ns) or info.findtext("cap:effective", namespaces=ns),
+            "endsAt": info.findtext("cap:expires", namespaces=ns), "publishedAt": root.findtext("cap:sent", namespaces=ns),
+            "municipalityCodes": re.findall(r"\((\d{7})\)", params.get("Municipios") or ""), "polygons": polygons})
+    return items
+
+
+def avisos_aplicaveis(items, property_data, now):
+    from integracoes.geoespacial import ponto_no_poligono
+    from services.environmental_context import instant
+    result = []
+    for item in items:
+        start, end = instant(item.get("startsAt")), instant(item.get("endsAt"))
+        if not start or not end or end <= now or end <= start:
+            continue
+        evidence = None
+        lat, lon = property_data.get("latitude"), property_data.get("longitude")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and any(ponto_no_poligono(lon, lat, p) for p in item.get("polygons", [])):
+            evidence = "ponto monitorado dentro do polígono CAP"
+        elif str(property_data.get("ibgeCode")) in item.get("municipalityCodes", []):
+            evidence = "código IBGE do município listado no CAP"
+        if evidence:
+            result.append({**{key: item.get(key) for key in ("id", "source", "eventType", "severity", "description", "startsAt", "endsAt", "publishedAt")},
+                           "geographicEvidence": evidence, "temporalState": "active" if start <= now else "upcoming"})
+    return result
+
+
+def consultar_contexto_avisos_inmet():
+    """All official CAP phenomena for context only; does not change alert ingestion policy."""
+    with _CAP_LOCK:
+        stored = cache.obter("inmet:cap_context")
+        if stored:
+            return {**stored, "cache": True}
+        try:
+            response = requests.get(ALERTAS_RSS_URL, timeout=ALERTAS_TIMEOUT)
+            response.raise_for_status()
+            root = ElementTree.fromstring(response.content)
+            links = list(dict.fromkeys(i.findtext("link") or "" for i in root.findall(".//item")))
+            valid_links = [link for link in links if re.fullmatch(r"https://apiprevmet3\.inmet\.gov\.br/avisos/rss/\d+", link)]
+            def fetch(link):
+                try:
+                    response = requests.get(link, timeout=ALERTAS_TIMEOUT, allow_redirects=False)
+                    response.raise_for_status()
+                    return parse_cap(response.content), True
+                except (requests.RequestException, ValueError, ElementTree.ParseError):
+                    return [], False
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(fetch, valid_links[:60]))
+            complete = len(links) == len(valid_links) and len(valid_links) <= 60 and all(ok for _, ok in results)
+            result = {"status": "ok" if complete else "parcial", "atribuicao": "INMET CAP", "consultadoEm": _agora().isoformat(),
+                      "cache": False, "dados": {"items": [item for batch, _ in results for item in batch], "complete": complete}}
+            cache.salvar("inmet:cap_context", result, 300)
+            return result
+        except (requests.RequestException, ValueError, ElementTree.ParseError):
+            return {"status": "unavailable", "atribuicao": "INMET CAP", "dados": {}, "consultadoEm": None}
 
 
 class _TabelaAvisoParser(HTMLParser):

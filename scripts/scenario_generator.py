@@ -22,11 +22,11 @@ def generate_scenario(name, now=None):
         "demoData": True, "scenario": name,
     } for index, value in enumerate(values)]
     environmental = {
-        "incendio": {"score": 90 if environmental_high else 20,
-                     "nivel": "critico" if environmental_high else "baixo",
+        "incendio": {"score": 90 if name == "combined_critical" else 75 if environmental_high else 20,
+                     "nivel": "critico" if name == "combined_critical" else "alto" if environmental_high else "baixo",
                      "confianca": "alta", "fatores": []},
-        "geral": {"score": 90 if environmental_high else 20,
-                  "nivel": "critico" if environmental_high else "baixo"},
+        "geral": {"score": 90 if name == "combined_critical" else 75 if environmental_high else 20,
+                  "nivel": "critico" if name == "combined_critical" else "alto" if environmental_high else "baixo"},
     }
     return {"name": name, "demoData": True, "generatedAt": current,
             "telemetry": telemetry, "environmentalRisk": environmental}

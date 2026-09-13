@@ -2,12 +2,15 @@
 
 import argparse
 import os
+import json
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from config import Config
 from scripts.scenario_generator import generate_scenario
 from services.device_service import DeviceService
-from services.alert_service import AlertService
+from services.alert_service import AlertService, _alert_id
+from services.recommendation_service import recommendations, machine_recommendations
 from services.firebase_client import FirebaseClient
 from services.firestore_service import upsert_documento
 from services.maquina_service import MaquinaService, validar_maquina
@@ -23,6 +26,68 @@ from services.unit_service import validate_measurements
 PROPERTY_ID = "demo_fazenda_01"
 MACHINE_ID = "demo_trator_01"
 DEVICE_ID = "demo_device_01"
+
+
+def preview(scenario="normal", now=None):
+    """Offline fixtures from the existing scenario/risk/alert engines. Never calls Firebase."""
+    now = now or datetime.now(timezone.utc)
+    prop, machine = definitions(now)
+    prop.update(fazendaId=PROPERTY_ID, demoData=True)
+    machine.update(maquinaId=MACHINE_ID, fazendaId=PROPERTY_ID, demoData=True)
+    generated = generate_scenario(scenario, now)
+    readings = [{"dataHora": r["observedAt"], "measurements": r["measurements"]} for r in generated["telemetry"]]
+    fresh = [r for r in readings if TelemetriaService.classificar(r, Config.IOT_MAX_AGE_SECONDS, now)["fresh"]]
+    internal = calcular_risco_maquina(machine, list(reversed(fresh)))
+    near = scenario in {"environmental_fire_high", "combined_critical"}
+    operational = calcular_risco_operacional(generated["environmentalRisk"], internal, True, True,
+                                           2 if near else None, Config.OPERATIONAL_HOTSPOT_DISTANCE_KM)
+    last_seen = now - timedelta(minutes=30) if scenario == "stale_device" else now
+    health = DeviceService.health(last_seen, Config.DEVICE_STALE_AFTER_SECONDS, Config.DEVICE_OFFLINE_AFTER_SECONDS, now)
+    class PreviewAlerts(AlertService):
+        # Only persistence is replaced; official evaluate decides every alert condition.
+        def emit(self, alert_type, severity, fazenda_id, risk_type, factors, evidence,
+                 source_analysis_id, maquina_id=None, source_event_id=None, now=None):
+            key = "|".join(str(v or "-") for v in (fazenda_id, maquina_id, alert_type, risk_type))
+            row = {"alertId": _alert_id(key), "fazendaId": fazenda_id, "maquinaId": maquina_id,
+                   "type": alert_type, "severity": severity, "riskType": risk_type, "status": "open",
+                   "factors": factors, "evidence": evidence, "sourceAnalysisId": source_analysis_id,
+                   "sourceEventId": source_event_id, "createdAt": generated["generatedAt"],
+                   "lastTriggeredAt": generated["generatedAt"], "demoData": True}
+            return {**row, "recommendations": recommendations(row)}, False
+    emitted = PreviewAlerts(None).evaluate(PROPERTY_ID, generated["environmentalRisk"], [{
+        "machine": machine, "machineRisk": internal, "operationalContextRisk": operational,
+        "location": {"locationCurrent": scenario != "stale_device", "nearestHotspotDistanceKm": 2 if near else None,
+                     "nearestHotspotAgeHours": 1 if near else None}}], "demo_preview_" + scenario,
+        property_hotspot={"distanciaKm": 2, "ageHours": 1} if near else None)
+    alerts = [item["alert"] for item in emitted]
+    status = {"identity": machine, "deviceId": DEVICE_ID, "demoData": True, "deviceHealth": health,
+        "latestTelemetryAt": readings[-1]["dataHora"], "lastSeenAt": last_seen,
+        "latestMeasurements": readings[-1]["measurements"],
+        "telemetryFreshness": TelemetriaService.classificar(readings[-1], Config.IOT_MAX_AGE_SECONDS, now),
+        "machineRisk": internal, "operationalRisk": operational, "environmentalContext": generated["environmentalRisk"],
+        "recommendations": machine_recommendations(internal, health),
+        "mapLocation": {"latitude": machine["latitude"], "longitude": machine["longitude"], "current": scenario != "stale_device"}}
+    property_status = {"property": prop, "currentRisk": generated["environmentalRisk"], "lastAnalysisAt": now,
+        "machines": [machine], "alerts": alerts, "alertCount": len(alerts),
+        "riskExplanations": explain_risks(generated["environmentalRisk"], {"syntheticDemoData": True}),
+        "sourceHealth": {"demo": {"status": "synthetic_demo"}}}
+    return {"demoData": True, "scenario": scenario, "generatedAt": now, "alerts": alerts, "responses": {
+        "/dashboard?limit=20": {"properties": [{"property": prop, "currentRisk": generated["environmentalRisk"]["geral"]}], "alerts": alerts},
+        f"/fazendas/{PROPERTY_ID}/status": property_status,
+        f"/fazendas/{PROPERTY_ID}/maquinas/{MACHINE_ID}/status": status}}
+
+
+def export_preview(path, scenario):
+    target = Path(path).resolve()
+    # Exports never overwrite an existing unrelated file or anything outside ignored artifacts.
+    root = (Path(__file__).resolve().parents[1] / "frontend" / "artifacts").resolve()
+    if root not in target.parents or target.suffix != ".json":
+        raise ValueError("Exportação deve ser um .json dentro de frontend/artifacts.")
+    if target.exists() and json.loads(target.read_text(encoding="utf-8")).get("demoData") is not True:
+        raise ValueError("Arquivo existente não é uma exportação DEMO.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(preview(scenario), default=lambda v: v.isoformat(), ensure_ascii=False), encoding="utf-8")
+    return {"demoData": True, "scenario": scenario, "exported": str(target), "firebaseWrites": 0}
 
 
 def definitions(now=None):
@@ -57,6 +122,8 @@ def execute(dry_run=True, scenario="normal"):
                "scenario": scenario}
     if dry_run:
         return summary
+    if Config.ENVIRONMENT not in {"development", "test"}:
+        raise RuntimeError("Seed --write permitido apenas em development/test.")
     token = os.getenv("DEMO_DEVICE_TOKEN")
     if not token:
         raise RuntimeError("DEMO_DEVICE_TOKEN é obrigatório no modo --write e não deve ser versionado.")
@@ -81,7 +148,7 @@ def execute(dry_run=True, scenario="normal"):
     for reading in generated["telemetry"]:
         values, descriptors = validate_measurements(reading["measurements"], {"sensoresConfigurados": machine_data["sensoresConfigurados"]})
         telemetry_service.save(DEVICE_ID, PROPERTY_ID, MACHINE_ID, values, descriptors,
-                               reading["observedAt"], reading["readingId"], "DEMO_SEED")
+                               reading["observedAt"], reading["readingId"] + "_" + now.strftime("%Y%m%d%H%M%S%f"), "DEMO_SEED")
         normalized_readings.append({"dataHora": reading["observedAt"], "measurements": values})
     last_seen = now - timedelta(minutes=30) if scenario == "stale_device" else now
     device_service.touch(DEVICE_ID, last_seen)
@@ -150,11 +217,12 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Mostra o plano sem gravar (padrão).")
     mode.add_argument("--write", action="store_true", help="Grava explicitamente no Firebase configurado.")
+    mode.add_argument("--export", metavar="PATH", help="Exporta o cenário offline em frontend/artifacts; não grava Firebase.")
     parser.add_argument("--scenario", default="normal", choices=sorted({
         "normal", "machine_overheat", "environmental_fire_high", "combined_critical", "stale_device",
     }))
     args = parser.parse_args()
-    print(execute(dry_run=not args.write, scenario=args.scenario))
+    print(export_preview(args.export, args.scenario) if args.export else execute(dry_run=not args.write, scenario=args.scenario))
 
 
 if __name__ == "__main__":

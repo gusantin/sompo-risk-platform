@@ -53,7 +53,8 @@ class SnapshotServiceTestCase(unittest.TestCase):
     def test_listagem_unica_ordenada_preserva_null_no_final(self):
         service = RegionalSnapshotService(server.firebase, 200)
         itens = [{"riskScore": 80, "riskLevel": "critico"}, {"riskScore": None, "riskLevel": "dados_insuficientes"}]
-        with patch("services.regional_snapshot_service.consultar_documentos", return_value=itens):
+        with patch.object(service, "_args", return_value=("https://test.invalid", lambda: "test")), \
+             patch("services.regional_snapshot_service.consultar_documentos", return_value=itens):
             resultado = service.listar("MT", "incendio", 20)
         self.assertEqual(80, resultado[0]["riskScore"]); self.assertIsNone(resultado[-1]["riskScore"])
 

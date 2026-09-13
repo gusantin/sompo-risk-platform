@@ -1,5 +1,9 @@
 # SOMPO Risk Platform
 
+Entradas: `/seguradora` e `/segurado`. Consulte [rotas, cadastro e limites de acesso](docs/PRODUCT_PERSPECTIVES.md).
+
+A [carteira de apresentação](docs/PRESENTATION_PORTFOLIO.md) separa três identidades fictícias de dados ambientais reais, com consulta atual, última captura real e modo sintético explícito. Inclui comandos, fontes e limites.
+
 Backend Flask para análise determinística e explicável de riscos em propriedades e máquinas agrícolas. O núcleo combina cadastro da fazenda, contexto produtivo, máquinas, telemetria IoT opcional, clima, hotspots, geoespacial e histórico.
 
 Os resultados são índices experimentais: não são probabilidades, laudos técnicos, previsões garantidas de sinistro ou decisões atuariais.
@@ -26,6 +30,14 @@ O fluxo da propriedade depende de latitude/longitude válidas, não de `regional
 `confidence` descreve a qualidade/cobertura das informações usadas no cálculo. Não significa certeza de que um sinistro ocorrerá. Ausência de clima, hotspot, geoespacial, histórico ou IoT permanece explícita; o backend não inventa dados.
 
 ## Instalação e startup
+
+Para a apresentação, use o [runbook NEXT](docs/PRESENTATION_RUNBOOK.md): startup PowerShell, cinco cenários offline, smoke completo e recuperação. O helper não instala dependências nem popula Firebase; em modo offline mantém Telegram desabilitado. Em modo real preserva a configuração de servidor. Entrega exige worker explícito.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_demo.ps1 -Offline -BackendPort 5100 -Scenario combined_critical
+```
+
+O URL final inclui `/?mode=demo`; a porta 3000 ocupada é substituída por uma alternativa livre, como 3100. Configuração real de Firebase/Ollama é independente desse caminho offline.
 
 ```powershell
 python -m venv .venv
@@ -167,7 +179,11 @@ O round-trip Firebase com escrita/limpeza é um opt-in separado. Ele só opera e
 project ID em `FIREBASE_TEST_PROJECT_ACK`; remove somente o documento `test_core_*`
 criado pelo próprio teste.
 
-## Frontend MVP
+## Experiências operacionais
+
+A interface agora oferece **SOMPO Control Center** e **Client Operations Center**, compartilhando os serviços existentes. Consulte [docs/PRODUCTIZATION.md](docs/PRODUCTIZATION.md) para comportamento, limites de consulta, ações, recomendações, notificações Telegram e configuração. A seleção de perspectiva não é autenticação.
+
+## Frontend MVP (fundação preservada)
 
 O **SOMPO Rural Risk Command Center** fica em `frontend/` e concentra a apresentação em uma única tela responsiva. O Next.js acessa o Flask exclusivamente no servidor; a chave administrativa não usa prefixo `NEXT_PUBLIC_` e não é enviada ao navegador.
 
@@ -179,7 +195,7 @@ npm install
 npm run dev
 ```
 
-O dashboard tenta primeiro o snapshot de condições ambientais reais. Se o backend ou o snapshot estiver indisponível, a interface não preenche a tela silenciosamente: mostra `Dados reais indisponíveis` e oferece o cenário `DEMO` somente por ação explícita do usuário.
+O dashboard tenta primeiro os snapshots operacionais do backend; o showcase ambiental real é selecionado explicitamente. Se o backend ou o snapshot estiver indisponível, a interface não preenche a tela silenciosamente: mostra `Dados reais indisponíveis` e oferece o cenário `DEMO` somente por ação explícita do usuário.
 
 Prepare ou atualize o snapshot leve antes da apresentação. A rotina consulta um conjunto limitado de focos do INPE e três pontos municipais oficiais do IBGE, usa cache e preserva os scores do motor atual:
 
@@ -190,6 +206,8 @@ python scripts/find_live_demo_cases.py --write
 As propriedades do showcase são fictícias e aparecem como `Propriedade demonstrativa — condições ambientais reais`. Coordenadas, clima, focos, horários e fontes vêm das integrações consultadas. O endpoint de leitura é `GET /showcase/live-cases`; `LIVE_CASE_MAX_AGE_SECONDS` controla quando a interface passa a marcar o snapshot como desatualizado.
 
 ## Demo e smoke test
+
+Há também exportação offline dos mesmos cenários, sem Firebase: `python -m scripts.seed_demo --export frontend/artifacts/demo-scenario.json --scenario combined_critical`. O BFF usa `SOMPO_DEMO_SCENARIO_PATH` somente quando o modo DEMO é selecionado; o helper configura essa variável. Alertas exportados são sintéticos e somente leitura.
 
 O seed é dry-run por padrão, usa apenas IDs `demo_` e nunca roda no startup:
 
@@ -240,9 +258,9 @@ Property risk é independente do rollout regional. No futuro haverá um beta com
 - O DHT11 legado não informa por si só se mede ar, cabine ou motor.
 - O rate limit e o cache são locais ao processo.
 - O protótipo usa API keys estáticas para a aplicação; a interface de auth foi separada para futura adoção de Firebase Auth/JWT/gateway.
-- Eventos/alertas são internos; não há envio de e-mail, WhatsApp, push ou webhook.
+- Notificações Telegram possuem outbox e worker explícito, desabilitados por padrão. Outros canais permanecem futuros.
 - APIs externas podem apresentar atraso, indisponibilidade e cobertura parcial.
-- O frontend é um MVP de apresentação; não inclui autenticação de usuário final, RBAC, notificações ou atualização em tempo real.
+- O frontend oferece duas perspectivas de apresentação, sem autenticação de usuário final ou RBAC. Escritas pelo BFF são somente opt-in em desenvolvimento.
 - O `AgroRiskAgent` é read-only e depende do Ollama/modelo configurados; indisponibilidade é explícita e não há mock silencioso.
 
 ## Roadmap

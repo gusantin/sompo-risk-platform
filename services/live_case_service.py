@@ -128,6 +128,8 @@ class LiveCaseService:
                          "nearest": (queimadas.get("dados") or {}).get("focoMaisProximo")},
             "relevant": risco.get("nivel") in {"moderado", "alto", "critico"},
         }
+        from services.environmental_context import build_environmental_context
+        caso["environmentalContext"] = build_environmental_context(fontes, caso["property"])
         return caso
 
     @staticmethod

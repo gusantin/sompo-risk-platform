@@ -65,6 +65,7 @@ class Config:
     REGIONAL_STALE_AFTER_SECONDS = int(os.getenv("REGIONAL_STALE_AFTER_SECONDS", "7200"))
     EXTERNAL_API_BUDGET_SECONDS = _float_env("EXTERNAL_API_BUDGET_SECONDS", "25")
     LIVE_CASE_SNAPSHOT_PATH = os.getenv("LIVE_CASE_SNAPSHOT_PATH", str(BASE_DIR / "data" / "live_showcase_cases.json"))
+    PRESENTATION_PORTFOLIO_PATH = os.getenv("PRESENTATION_PORTFOLIO_PATH") or str(BASE_DIR / "data" / "presentation_portfolio.json")
     LIVE_CASE_MAX_AGE_SECONDS = int(os.getenv("LIVE_CASE_MAX_AGE_SECONDS", "21600"))
     LIVE_CASE_MONITORED_STATES = tuple(x.strip().upper() for x in os.getenv(
         "LIVE_CASE_MONITORED_STATES", "MT,MS,GO,MG,PR").split(",") if x.strip())

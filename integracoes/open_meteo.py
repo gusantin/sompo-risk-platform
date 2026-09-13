@@ -61,11 +61,12 @@ def consultar_clima(latitude, longitude):
             "current": ",".join([
                 "temperature_2m", "relative_humidity_2m", "precipitation",
                 "wind_speed_10m", "wind_gusts_10m", "soil_temperature_0cm",
-                "soil_moisture_0_to_1cm",
+                "soil_moisture_0_to_1cm", "weather_code",
             ]),
             "hourly": ",".join([
                 "temperature_2m", "precipitation", "precipitation_probability",
                 "wind_speed_10m", "wind_gusts_10m", "soil_moisture_0_to_1cm",
+                "relative_humidity_2m", "weather_code", "rain", "showers",
             ]),
         })
         atual = bruto.get("current", {})
@@ -103,6 +104,8 @@ def consultar_clima(latitude, longitude):
             "rajadaMax72hKmh": max(rajadas_72) if rajadas_72 else None,
             "umidadeSoloMin72hM3M3": min(solos_72) if solos_72 else None,
         }
+        from services.environmental_context import aggregate_forecast
+        dados["environmentalForecast"] = aggregate_forecast(bruto)
         resultado = {
             "status": "ok", "mensagem": None, "consultadoEm": _agora(),
             "cache": False, "dados": dados,

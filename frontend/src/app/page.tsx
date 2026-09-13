@@ -3,7 +3,8 @@ import { getCommandCenterData } from "@/lib/backend";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const data = await getCommandCenterData();
+export default async function Home({ searchParams }: { searchParams: Promise<{ mode?: string }> }) {
+  const { mode } = await searchParams;
+  const data = await getCommandCenterData(mode === "demo" || mode === "portfolio" || mode === "live" ? mode : undefined);
   return <CommandCenter initialData={data} />;
 }

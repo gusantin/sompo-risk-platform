@@ -20,8 +20,12 @@ try {
     const errors = [];
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
     page.on("pageerror", (error) => errors.push(error.message));
+    const demo = await (await page.request.get(`${baseURL}/api/command-center?mode=demo`)).json();
+    await page.route("**/api/command-center", (route) => route.fulfill({ json: demo }));
     await page.goto(baseURL, { waitUntil: "networkidle", timeout: 30_000 });
-    await page.getByRole("heading", { name: "Visão operacional do piloto" }).waitFor();
+    await page.getByRole("heading", { name: "SOMPO Control Center", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Atualizar dados" }).click();
+    await page.getByRole("button", { name: /Abrir detalhes de/i }).first().waitFor();
     const metrics = await page.evaluate(() => ({
       bodyWidth: document.body.scrollWidth,
       viewportWidth: window.innerWidth,

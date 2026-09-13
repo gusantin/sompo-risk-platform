@@ -1,5 +1,7 @@
 # Contrato da API V1
 
+Carteira de apresentação: `GET /showcase/portfolio` lê a última captura real e tenta consultar estados de até 20 alertas persistidos por propriedade. `?refresh=true` consulta os providers existentes e salva uma captura local; mantém autenticação e limite de consultas caras, sem emitir alertas ou Telegram. `provenance.identity` separa cliente demonstrativo de `provenance.environmental.origin/state/acquiredAt`. Fonte indisponível não vira dado sintético. Detalhes em [PRESENTATION_PORTFOLIO.md](PRESENTATION_PORTFOLIO.md).
+
 `apiContractVersion = "1"` foi preservado. Todas as respostas incluem `X-API-Contract-Version` e `X-Request-ID`. Timestamps JSON usam ISO 8601; documentos Firestore usam `timestampValue`.
 
 Erros seguem o contrato:
@@ -292,3 +294,14 @@ Integrações reais permanecem opt-in e somente leitura. Não há mocks/hardcode
 O teste Firestore de escrita é ainda mais restrito: requer `RUN_FIREBASE_INTEGRATION_TESTS=1`,
 `ENVIRONMENT=development|test` e `FIREBASE_TEST_PROJECT_ACK` igual ao project ID. Ele usa
 `test_sompo_core/test_core_*` e limpa exclusivamente o documento que criou.
+
+
+## Extensões de produto
+
+GET /alertas inclui recommendations por alerta; GET/PATCH /alertas/<id> inclui recommendations no envelope. GET /alertas/<id>/notifications lê registros de entrega sem enviar mensagens. GET /weather/alerts reutiliza INMET e inclui recomendações para severidade Perigo/Grande Perigo. Todas essas rotas mantêm autenticação de aplicação. GET de status de máquina inclui recommendations de conectividade e mapLocation com freshness calculada na leitura. Campos são aditivos; apiContractVersion continua 1.
+
+A leitura de notificações usa allowlist: IDs, canal, ocorrência, tipo (`alert`, `escalation`, `resolution`), severidade, estados, horários, tentativas, `retryable`, `nextAttemptAt`, categoria segura de falha e `telegramMessageId`. Não retorna mensagem bruta, token ou chat ID. `failed` com `retryable=false` é falha definitiva; `permanently_failed` esgotou tentativas; `unknown`/`attempting` exigem reconciliação quando persistem. PATCH para resolved pode enfileirar encerramento de ocorrência anteriormente entregue, sem chamar Telegram durante a requisição. PATCH repetido preserva idempotência. Ack não envia mensagem. Credenciais de usuário/tenant ainda não foram implementadas; a seleção de cliente limita a apresentação, não constitui autorização de produção.
+
+Detalhes e limitações: [PRODUCTIZATION.md](PRODUCTIZATION.md).
+
+Hardening: status de máquina inclui `telemetryFreshness` (`status`, `fresh`, `ageSeconds`), calculada pelo timestamp da medição, além da conectividade. `recommendations` compartilha regras com o Copilot; listagens por fazenda também incluem recomendações. GPS vencido remove a distância de hotspot do contexto de localização atual. Atualizações de alerta usam precondição de revisão Firestore; conflito exige nova leitura e não autoriza transição inválida. Consulte [PRESENTATION_RUNBOOK.md](PRESENTATION_RUNBOOK.md) para cenários offline e limites de validação.

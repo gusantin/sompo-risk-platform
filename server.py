@@ -17,6 +17,8 @@ from integracoes.inpe_queimadas import consultar_queimadas
 from integracoes.open_meteo import consultar_clima, consultar_hidrologia, consultar_terreno
 from integracoes.sgb import consultar_suscetibilidade
 from services.firebase_client import FirebaseClient
+from services.notification_service import NotificationDispatcher
+from services.recommendation_service import recommendations, machine_recommendations
 from services.alert_service import AlertService, AlertValidationError
 from services.audit_service import AuditService
 from services.auth_service import ApplicationAuthService
@@ -74,13 +76,15 @@ devices = DeviceService(firebase, maquinas, app.config["DEVICE_TOKEN_HASH_ITERAT
 events = EventService(firebase, app.config["EVENT_SIGNIFICANT_SCORE_DELTA"])
 alerts = AlertService(firebase, app.config["ALERT_COOLDOWN_SECONDS"], app.config["ALERT_HOTSPOT_DISTANCE_KM"],
                       app.config["ALERT_HOTSPOT_CRITICAL_DISTANCE_KM"], app.config["HOTSPOT_MAX_AGE_HOURS"])
+notifications = NotificationDispatcher(firebase)
+alerts.notification_dispatcher = notifications
 snapshots = SnapshotService(firebase)
 audit = AuditService(firebase)
 rate_limiter = InMemoryRateLimiter()
 agro_risk_tools = AgroRiskTools(
     propriedades, snapshots, maquinas, telemetria, devices, events, alerts,
     lambda: LiveCaseService.load_snapshot(app.config["LIVE_CASE_SNAPSHOT_PATH"]),
-    consultar_avisos_inmet,
+    consultar_avisos_inmet, notification_reader=notifications.list_for_alert,
 )
 agro_risk_agent = AgroRiskAgent(
     agro_risk_tools,
@@ -834,6 +838,7 @@ def risco_fazenda(fazenda_id):
                                  {"fazendaId": fazenda_id, "samples": 0, "risks": {}})
             _best_effort("property_snapshot_write", lambda: snapshots.save_property(fazenda_id, {
                 "environmentalRisk": riscos, "riskExplanations": explanations,
+                "environmentalContext": contexto.get("environmentalContext"),
                 "coverage": contexto["dataCoverage"], "sourceHealth": contexto["sourceHealth"],
                 "trend": trend, "analysisAt": analise["timestamp"], "sourceAnalysisId": analysis_id,
             }))
@@ -921,6 +926,7 @@ def _alert_filters(fazenda_id=None):
 def listar_alertas():
     try:
         items = alerts.list(_alert_filters(), request.args.get("limit", 50))
+        items = [{**item, "recommendations": recommendations(item)} for item in items]
         return jsonify({"status": "ok", "items": items, "count": len(items)})
     except (AlertValidationError, ValidacaoPropriedadeError, ValueError) as error:
         return _erro(str(error), 400, "dados_invalidos")
@@ -932,11 +938,23 @@ def listar_alertas():
 def listar_alertas_fazenda(fazenda_id):
     try:
         items = alerts.list(_alert_filters(fazenda_id), request.args.get("limit", 50))
+        items = [{**item, "recommendations": recommendations(item)} for item in items]
         return jsonify({"status": "ok", "items": items, "count": len(items)})
     except (AlertValidationError, ValidacaoPropriedadeError, ValueError) as error:
         return _erro(str(error), 400, "dados_invalidos")
     except Exception:
         return _erro("Persistência indisponível.", 503, "persistencia_indisponivel")
+
+
+@app.route("/alertas/<alert_id>/notifications", methods=["GET"])
+def alert_notifications(alert_id):
+    try:
+        validar_id(alert_id, "alertId")
+        return jsonify({"status": "ok", "items": notifications.list_for_alert(alert_id)})
+    except ValueError:
+        return _erro("alertId inválido.", 400, "dados_invalidos")
+    except Exception:
+        return _erro("Notificações indisponíveis.", 503, "persistencia_indisponivel")
 
 
 @app.route("/alertas/<alert_id>", methods=["GET", "PATCH"])
@@ -956,7 +974,7 @@ def detalhe_alerta(alert_id):
                 _audit(f"alert.{data['status']}", "alert", alert_id, {"status": data["status"]})
         if alert is None:
             return _erro("Alerta não encontrado.", 404, "nao_encontrado")
-        return jsonify({"status": "ok", "alert": alert})
+        return jsonify({"status": "ok", "alert": alert, "recommendations": recommendations(alert)})
     except (AlertValidationError, ValidacaoPropriedadeError, ValueError) as error:
         return _erro(str(error), 400, "dados_invalidos")
     except Exception:
@@ -1021,16 +1039,88 @@ def showcase_live_cases():
         payload["snapshotAgeSeconds"] = round(idade, 1)
         payload["stale"] = idade > app.config["LIVE_CASE_MAX_AGE_SECONDS"]
         payload["maxAgeSeconds"] = app.config["LIVE_CASE_MAX_AGE_SECONDS"]
-        avisos = consultar_avisos_inmet()
-        payload["weatherAlerts"] = {
-            "status": avisos.get("status"),
-            "source": avisos.get("atribuicao"),
-            "consultedAt": avisos.get("consultadoEm"),
-            "items": (avisos.get("dados") or {}).get("items", []),
-        }
+        payload["weatherAlerts"] = _weather_alert_payload()
         return jsonify(payload)
     except (FileNotFoundError, ValueError):
         return _erro("Dados ambientais reais ainda não foram preparados.", 503, "live_cases_unavailable")
+
+
+@app.route("/showcase/portfolio", methods=["GET"])
+def presentation_portfolio():
+    from services.presentation_portfolio_service import configured_portfolio
+    service = configured_portfolio()
+    previous = service.read(app.config["PRESENTATION_PORTFOLIO_PATH"])
+    if request.args.get("refresh") == "true":
+        allowed, retry_after = rate_limiter.allow(f"presentation_portfolio:{request.remote_addr}",
+            app.config["EXPENSIVE_RATE_LIMIT_REQUESTS"], app.config["EXPENSIVE_RATE_LIMIT_WINDOW_SECONDS"])
+        if not allowed:
+            response, status = _erro("Limite de consultas excedido.", 429, "rate_limit_exceeded")
+            response.headers["Retry-After"] = str(retry_after)
+            return response, status
+        payload = service.capture(previous)
+        LiveCaseService.save_snapshot(payload, app.config["PRESENTATION_PORTFOLIO_PATH"])
+    else:
+        payload = service.snapshot(previous)
+    if not payload.get("cases"):
+        return _erro("Carteira demonstrativa real ainda não capturada.", 503, "portfolio_unavailable")
+    for case in payload["cases"]:
+        try:
+            rows = alerts.list({"fazendaId": case["id"]}, limit=20)
+            case["operationalState"] = {"openAlerts": sum(a.get("status") != "resolved" for a in rows), "scope": "20 recent alerts",
+                "alerts": [{"alertId": a["alertId"], "status": a.get("status"), "severity": a.get("severity"),
+                    "notifications": notifications.list_for_alert(a["alertId"])} for a in rows]}
+        except Exception:
+            case["operationalState"] = None
+    return jsonify(payload)
+
+
+@app.route("/showcase/perspectives/<perspective>", methods=["GET"])
+def product_perspective(perspective):
+    from services.presentation_portfolio_service import configured_portfolio
+    from services.product_perspective_service import scope_snapshot, attach_operations
+    try:
+        service = configured_portfolio()
+        scoped = scope_snapshot(service.snapshot(service.read(app.config["PRESENTATION_PORTFOLIO_PATH"])),
+                                perspective, request.args.get("client"))
+        return jsonify(attach_operations(scoped, alerts, notifications))
+    except ValidacaoPropriedadeError as error:
+        return _erro(str(error), 400, "dados_invalidos")
+
+
+@app.route("/showcase/insured/properties", methods=["POST"])
+@app.route("/showcase/insured/properties/<property_id>/analyze", methods=["POST"])
+def presentation_property_create(property_id=None):
+    from services.product_perspective_service import create_property, analyze_property
+    if app.config["ENVIRONMENT"] not in {"development", "test"}:
+        return _erro("Cadastro demonstrativo disponível apenas em development/test.", 403, "demo_only")
+    allowed, retry = rate_limiter.allow(f"presentation_create:{request.remote_addr}",
+        app.config["EXPENSIVE_RATE_LIMIT_REQUESTS"], app.config["EXPENSIVE_RATE_LIMIT_WINDOW_SECONDS"])
+    if not allowed:
+        return _erro("Limite de consultas excedido.", 429, "rate_limit_exceeded")
+    try:
+        path = app.config["PRESENTATION_PORTFOLIO_PATH"]
+        if property_id:
+            result = analyze_property(path, property_id)
+            return jsonify({"status": "ok", "id": result["id"]})
+        prop = create_property(path, request.get_json(silent=True))
+        return jsonify({"status": "waiting", "property": prop}), 201
+    except ValidacaoPropriedadeError as error:
+        return _erro(str(error), 400, "dados_invalidos")
+
+
+def _weather_alert_payload():
+    avisos = consultar_avisos_inmet()
+    items = []
+    for item in (avisos.get("dados") or {}).get("items", []):
+        severe = str(item.get("severity", "")).casefold() in {"perigo", "grande perigo"}
+        items.append({**item, "recommendations": recommendations({"type": "severe_weather_warning"}) if severe else []})
+    return {"status": avisos.get("status"), "source": avisos.get("atribuicao"),
+            "consultedAt": avisos.get("consultadoEm"), "items": items}
+
+
+@app.route("/weather/alerts", methods=["GET"])
+def weather_alerts():
+    return jsonify(_weather_alert_payload())
 
 
 @app.route("/agent/query", methods=["POST"])
@@ -1039,7 +1129,7 @@ def consultar_agente_contextual():
     if not request.is_json:
         return _erro("Content-Type deve ser application/json.", 415, "tipo_conteudo_invalido")
     payload = request.get_json(silent=True)
-    allowed_fields = {"question", "contextPropertyId"}
+    allowed_fields = {"question", "contextPropertyId", "mode", "snapshotGeneratedAt", "perspective", "clientScope"}
     if (not isinstance(payload, dict) or "question" not in payload
             or set(payload) - allowed_fields):
         return _erro("Corpo deve conter question e, opcionalmente, contextPropertyId.", 400, "dados_invalidos")
@@ -1052,6 +1142,25 @@ def consultar_agente_contextual():
         response.headers["Retry-After"] = str(retry_after)
         return response, status
     try:
+        if payload.get("mode") == "portfolio":
+            from services.presentation_portfolio_service import configured_portfolio
+            service = configured_portfolio()
+            snapshot = service.snapshot(service.read(app.config["PRESENTATION_PORTFOLIO_PATH"]))
+            if payload.get("perspective"):
+                from services.product_perspective_service import scope_snapshot, attach_operations
+                try:
+                    snapshot = scope_snapshot(snapshot, payload["perspective"], payload.get("clientScope"))
+                except ValidacaoPropriedadeError as error:
+                    raise AgentValidationError(str(error)) from error
+                snapshot = attach_operations(snapshot, alerts, notifications)
+            if not snapshot.get("cases"):
+                return _erro("Captura demonstrativa indisponível.", 503, "portfolio_unavailable")
+            if not payload.get("snapshotGeneratedAt") or payload["snapshotGeneratedAt"] != snapshot.get("generatedAt"):
+                return _erro("A captura mudou. Atualize a carteira antes de consultar o Copilot.", 409, "portfolio_snapshot_changed")
+            return jsonify({"status": "ok", **agro_risk_agent.ask(payload.get("question"),
+                payload.get("contextPropertyId"), presentation_snapshot=snapshot)})
+        if payload.get("mode") is not None or "snapshotGeneratedAt" in payload:
+            raise AgentValidationError("Modo de consulta inválido.")
         return jsonify({"status": "ok", **agro_risk_agent.ask(
             payload.get("question"), payload.get("contextPropertyId"),
         )})
@@ -1082,6 +1191,7 @@ def status_fazenda(fazenda_id):
             machine_summary.append({
                 "maquinaId": machine.get("maquinaId"), "nome": machine.get("nome"),
                 "status": machine.get("status"), "deviceHealth": health,
+            "recommendations": machine_recommendations(state.get("machineRisk") or {}, health),
                 "machineRisk": state.get("machineRisk", {"status": "insufficient_data", "level": "unknown"}),
                 "operationalRisk": state.get("operationalRisk", {"status": "insufficient_data", "level": "unknown"}),
                 "lastSeenAt": state.get("lastSeenAt"),
@@ -1095,6 +1205,7 @@ def status_fazenda(fazenda_id):
             "sourceHealth": (current or {}).get("sourceHealth", {}),
             "coverage": (current or {}).get("coverage", {}), "machines": machine_summary,
             "alerts": alert_items, "alertCount": len(alert_items),
+            "environmentalContext": (current or {}).get("environmentalContext"),
         })
     except (ValueError, ValidacaoPropriedadeError) as error:
         return _erro(str(error), 400, "dados_invalidos")
@@ -1118,6 +1229,7 @@ def status_maquina(fazenda_id, maquina_id):
             health = devices.health(last_seen, app.config["DEVICE_STALE_AFTER_SECONDS"],
                                     app.config["DEVICE_OFFLINE_AFTER_SECONDS"])
             state = {"deviceId": (device or {}).get("deviceId"), "deviceHealth": health,
+            "recommendations": machine_recommendations(state.get("machineRisk") or {}, health),
                      "lastSeenAt": last_seen, "latestMeasurements": (latest or {}).get("measurements", {}),
                      "latestMeasurementDescriptors": (latest or {}).get("measurementDescriptors", {}),
                      "latestTelemetryAt": (latest or {}).get("dataHora")}
@@ -1129,17 +1241,34 @@ def status_maquina(fazenda_id, maquina_id):
             alert_items = []
         health = devices.health(state.get("lastSeenAt"), app.config["DEVICE_STALE_AFTER_SECONDS"],
                                 app.config["DEVICE_OFFLINE_AFTER_SECONDS"])
+        location_at = machine.get("lastLocationAt")
+        location_age = None
+        if location_at:
+            try:
+                location_age = (datetime.now(timezone.utc) - parse_timestamp(location_at, "lastLocationAt")).total_seconds()
+            except ValueError:
+                pass
+        map_location = {"latitude": machine.get("latitude"), "longitude": machine.get("longitude"),
+                        "observedAt": location_at, "current": location_age is not None
+                        and 0 <= location_age <= app.config["MACHINE_LOCATION_MAX_AGE_SECONDS"]}
+        freshness = TelemetriaService.classificar({"dataHora": state.get("latestTelemetryAt"), "measurements": state.get("latestMeasurements") or {}}, app.config["IOT_MAX_AGE_SECONDS"])
+        location = dict(state.get("location") or {})
+        if not map_location["current"]:
+            location.update(locationCurrent=False, nearestHotspotDistanceKm=None, nearestHotspotAgeHours=None)
         return jsonify({
             "status": "ok", "apiContractVersion": app.config["API_CONTRACT_VERSION"],
+            "telemetryFreshness": freshness,
             "identity": machine, "property": property_data, "deviceId": state.get("deviceId"),
             "deviceHealth": health,
+            "mapLocation": map_location,
+            "recommendations": machine_recommendations(state.get("machineRisk") or {}, health),
             "lastSeenAt": state.get("lastSeenAt"), "latestTelemetryAt": state.get("latestTelemetryAt"),
             "latestMeasurements": state.get("latestMeasurements", {}),
             "latestMeasurementDescriptors": state.get("latestMeasurementDescriptors", {}),
             "machineRisk": state.get("machineRisk", {"status": "insufficient_data", "level": "unknown"}),
             "environmentalContext": state.get("environmentalContext", property_current.get("environmentalRisk")),
             "operationalRisk": state.get("operationalRisk", {"status": "insufficient_data", "level": "unknown"}),
-            "location": state.get("location", {"locationCurrent": False}),
+            "location": location,
             "alerts": alert_items, "alertCount": len(alert_items),
         })
     except (ValueError, ValidacaoPropriedadeError) as error:

@@ -135,6 +135,11 @@ class AgroRiskAgent:
 
     def _deterministic_answer(self, context, question, fallback=False):
         detail = context.get("propriedade") or {}
+        if any(word in _normalize(question) for word in ("chover", "chuva", "pancada", "umidade", "condicoes ambientais", "tempestade", "proximos dias")) and detail.get("environmentalContext"):
+            from services.environmental_context import environmental_text
+            return "Condições ambientais registradas; previsões não alteram a classificação oficial.\n" + environmental_text(detail["environmentalContext"], question)
+        if context.get("operacoes"):
+            return None
         if not detail:
             return None
         normalized_question = _normalize(question)
@@ -325,7 +330,7 @@ class AgroRiskAgent:
             text = fallback
         return {"pergunta": question, "resposta": text, "provider": self.provider, "modelo": self.model}
 
-    def ask(self, question, context_property_id=None):
+    def ask(self, question, context_property_id=None, presentation_snapshot=None):
         if not isinstance(question, str) or not question.strip():
             raise AgentValidationError("Pergunta é obrigatória.")
         question = question.strip()
@@ -335,6 +340,14 @@ class AgroRiskAgent:
                 not isinstance(context_property_id, str) or not context_property_id.strip()
                 or len(context_property_id) > 100):
             raise AgentValidationError("contextPropertyId inválido.")
+        if presentation_snapshot is not None:
+            from .presentation import portfolio_context, portfolio_answer
+            context = portfolio_context(presentation_snapshot, context_property_id)
+            return {"answer": portfolio_answer(context, question), "provider": "deterministic",
+                    "model": None, "readOnly": True, "generatedAt": datetime.now(timezone.utc).isoformat(),
+                    "snapshotGeneratedAt": context["generatedAt"], "contextPropertyId": context_property_id,
+                    "trace": {"source": context["source"], "readOnly": True,
+                              "consultedIds": [item["id"] for item in context["items"]]}}
         if not self.configured:
             raise AgentProviderNotConfiguredError(
                 "Configure LLM_PROVIDER=ollama, OLLAMA_URL e OLLAMA_MODEL.",

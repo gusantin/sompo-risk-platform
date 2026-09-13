@@ -11,33 +11,30 @@ interface Message {
   text: string;
 }
 
-const suggestions = [
-  "Por que Novo Mundo exige atenção?",
-  "Existe algum alerta meteorológico ativo?",
-  "Qual é o status do ESP32?",
-];
-
-export function RiskAssistant() {
+export function RiskAssistant({ initialPropertyId, available = true, portfolioSnapshot, perspective, clientScope }: { initialPropertyId?: string; available?: boolean; portfolioSnapshot?: string; perspective?: "seguradora" | "segurado"; clientScope?: string }) {
+  const suggestions = portfolioSnapshot ? initialPropertyId ? ["Por que minha propriedade está nesse nível?", "Existe algum foco de calor relevante?", "Quando esses dados foram atualizados?"] : ["Qual cliente precisa mais de atenção agora?", "Quais dados são reais e quais são demonstrativos?", "Quando esses dados foram atualizados?"] : initialPropertyId ? ["O que precisa da minha atenção agora?", "Qual máquina merece atenção?", "Algum dado está desatualizado?"] : ["Quais propriedades devo priorizar agora?", "Quais alertas ainda estáo abertos?", "Resuma o risco atual da carteira."];
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
-  const [contextPropertyId, setContextPropertyId] = useState<string | null>(null);
+  const [contextPropertyId, setContextPropertyId] = useState<string | null>(initialPropertyId ?? null);
   const [messages, setMessages] = useState<Message[]>([{
     role: "assistant",
-    text: "Olá! Pergunte sobre os riscos das propriedades monitoradas.",
+    text: perspective === "segurado" ? "Pergunte sobre suas fazendas nesta conta demonstrativa. Somente consulta; fontes e horários acompanham as respostas." : available ? portfolioSnapshot ? "Pergunte sobre a captura da carteira demonstrativa. Clientes fictícios; a origem e a atualização dos dados ambientais acompanham as respostas." : "Olá! Pergunte sobre os riscos das propriedades monitoradas." : "O Copilot consulta dados oficiais. Neste cenário offline, consulte os fatores e recomendações exibidos nos cartões.",
   }]);
 
   async function ask(rawQuestion: string) {
     const nextQuestion = rawQuestion.trim();
-    if (!nextQuestion || loading) return;
+    if (!available || !nextQuestion || loading) return;
     setMessages((current) => [...current, { role: "user", text: nextQuestion }]);
     setQuestion("");
     setLoading(true);
     try {
-      const response = await fetch("/api/agent", {
+      const response = await fetch(perspective ? `/api/perspectives/${perspective}/agent` : "/api/agent", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: nextQuestion,
+          ...(clientScope ? { clientScope } : {}),
+          ...(portfolioSnapshot ? { mode: "portfolio", snapshotGeneratedAt: portfolioSnapshot } : {}),
           ...(contextPropertyId ? { contextPropertyId } : {}),
         }),
       });
@@ -76,10 +73,10 @@ export function RiskAssistant() {
           <div className="flex items-center gap-2"><Badge className="border-emerald-200 bg-emerald-50 text-emerald-700"><ShieldCheck className="mr-1 size-3" /> Somente consulta</Badge><span className="text-[9px] text-slate-400">Respostas baseadas nas informações disponíveis</span></div>
           {messages.map((message, index) => <div key={`${message.role}-${index}`} className={cn("max-w-[88%] rounded-xl px-3 py-2 text-xs leading-relaxed", message.role === "user" ? "ml-auto bg-slate-950 text-white" : "bg-slate-100 text-slate-700")}>{message.text}</div>)}
           {loading && <div className="flex items-center gap-2 text-xs text-slate-400"><LoaderCircle className="size-4 animate-spin" /> Analisando o risco…</div>}
-          {messages.length === 1 && <div className="space-y-2 pt-2">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => void ask(suggestion)} className="block w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-[11px] text-slate-600 hover:border-slate-300 hover:bg-slate-50">{suggestion}</button>)}</div>}
+          {available && messages.length === 1 && <div className="space-y-2 pt-2">{(perspective === "segurado" && !initialPropertyId ? ["Qual das minhas fazendas está com maior risco?", "Tenho algum alerta ativo?", "Quando esses dados foram atualizados?"] : suggestions).map((suggestion) => <button key={suggestion} type="button" onClick={() => void ask(suggestion)} className="block w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-[11px] text-slate-600 hover:border-slate-300 hover:bg-slate-50">{suggestion}</button>)}</div>}
         </div>
         <form onSubmit={submit} className="border-t border-slate-200 p-3">
-          <div className="flex items-end gap-2"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1000} rows={2} placeholder="Pergunte sobre risco, fontes, alertas ou máquinas…" className="min-h-16 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-slate-400" /><Button type="submit" size="icon" disabled={loading || !question.trim()} aria-label="Enviar pergunta"><Send className="size-4" /></Button></div>
+          <div className="flex items-end gap-2"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1000} rows={2} placeholder="Pergunte sobre risco, fontes, alertas ou máquinas…" className="min-h-16 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-slate-400" /><Button type="submit" size="icon" disabled={!available || loading || !question.trim()} aria-label="Enviar pergunta"><Send className="size-4" /></Button></div>
         </form>
       </section>}
       <Button type="button" onClick={() => setOpen((current) => !current)} className="h-12 rounded-full bg-slate-950 px-5 text-white shadow-xl hover:bg-slate-800" aria-expanded={open} aria-label="Abrir Assistente de Risco"><Bot className="mr-2 size-5" /> Assistente de Risco</Button>

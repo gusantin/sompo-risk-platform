@@ -107,6 +107,14 @@ def listar_focos_recentes(ufs, limite=200):
     return resultado
 
 
+def produtos_secundarios():
+    """Independent boundary: no validated point sampler for official INPE NetCDF rasters yet."""
+    return {name: {"value": None, "source": "INPE Programa Queimadas", "freshness": "unavailable",
+                   "observedAt": None, "forecastFor": None, "fetchedAt": None, "provenance": "unavailable",
+                   "reason": "Official raster requires validated point sampling; not inferred from hotspots."}
+            for name in ("observedFireRisk", "forecastFireRisk3d", "precipitation", "temperature", "humidity", "daysWithoutRain")}
+
+
 def contextualizar_focos(latitude, longitude, focos, consultado_em=None):
     """Converte uma listagem INPE já obtida no contrato geoespacial usado pelo motor."""
     agora = _agora()

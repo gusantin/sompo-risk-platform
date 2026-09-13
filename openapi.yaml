@@ -85,6 +85,16 @@ paths:
       responses:
         "200": {description: Casos ambientais reais e estado de staleness}
         "503": {$ref: "#/components/responses/Unavailable"}
+  /showcase/portfolio:
+    get:
+      summary: Fixed fictional presentation identities with real environmental provenance
+      description: Reads the captured real portfolio; explicit refresh queries existing providers and updates only the local snapshot. Does not emit alerts or Telegram.
+      parameters:
+        - {name: refresh, in: query, schema: {type: boolean, default: false}}
+      responses:
+        "200": {description: Three presentation identities, official risk results, per-source timestamps and optional persisted operational state}
+        "429": {description: Refresh rate limit exceeded}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /devices:
     get:
       summary: Lista dispositivos sem material de credencial
@@ -316,6 +326,26 @@ paths:
     get:
       summary: Hotspots existentes em snapshots já carregados
       responses: {"200": {description: Camada parcial}}
+  /alertas/{alertId}/notifications:
+    get:
+      summary: Read notification delivery records without dispatching
+      parameters:
+        - in: path
+          name: alertId
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Notification records with channel, status and timestamps; no credentials
+        '503':
+          description: Notification persistence unavailable
+  /weather/alerts:
+    get:
+      summary: Official INMET warnings with deterministic operational recommendations
+      responses:
+        '200':
+          description: Source status, consultation time and available warnings
+
 components:
   securitySchemes:
     BearerAuth:

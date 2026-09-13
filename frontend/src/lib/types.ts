@@ -6,7 +6,7 @@ export interface StateSummary {
   highCriticalCount: number;
   highestLevel: RiskLevel;
   highestScore: number | null;
-  alertCount: number;
+  alertCount: number | null;
   nearbyHotspotCount: number | null;
   demo: boolean;
 }
@@ -38,6 +38,10 @@ export interface SourceItem {
 }
 
 export interface MachineView {
+  telemetryFreshness?: string;
+  configuredSensors?: { id: string; type: string; scope: string }[];
+  recommendations?: { ruleId: string; text: string }[];
+  location?: { latitude: number; longitude: number; current: boolean };
   id: string;
   propertyId: string;
   propertyName: string;
@@ -56,7 +60,20 @@ export interface MachineView {
   demo: boolean;
 }
 
+export interface EnvironmentalContext {
+  schema: string;
+  sections: { title: string; lines: string[]; facts: { value: unknown; source: string; fetchedAt: string | null; observedAt: string | null; forecastFor: { start: string; end: string } | null; freshness: string }[] }[];
+}
+
 export interface PropertyView {
+  processingState?: string;
+  environmentalContext?: EnvironmentalContext;
+  clientName?: string;
+  provenance?: { identity: "demo" | "real"; environmental: { origin: "real" | "synthetic" | "unavailable"; state: "real_live" | "real_cached" | "synthetic" | "unavailable" | "stale" | "insufficient_data"; acquiredAt?: string | null } };
+  recommendations?: { ruleId: string; text: string }[];
+  coordinateDisclosure?: string;
+  operationalState?: { openAlerts: number; alerts: { alertId: string; status: string; severity: string; notifications: import("./operations").Delivery[] }[] } | null;
+  environmentalLevel?: RiskLevel;
   id: string;
   name: string;
   city: string;
@@ -80,7 +97,7 @@ export interface PropertyView {
   analysisTimestamp: string | null;
   analysisFreshness: string;
   history: number[];
-  alertCount: number;
+  alertCount: number | null;
   machines: MachineView[];
   demo: boolean;
   propertyDemo: boolean;
@@ -88,6 +105,8 @@ export interface PropertyView {
 }
 
 export interface LiveEvent {
+  alertStatus?: "open" | "acknowledged" | "resolved";
+  recommendations?: { ruleId: string; text: string }[];
   id: string;
   category: "event" | "alert";
   eventType: string;
@@ -134,6 +153,10 @@ export interface HotspotView {
 }
 
 export interface CommandCenterData {
+  requestMode?: "portfolio" | "live";
+  presentationMode?: "live" | "snapshot";
+  demoAlerts?: import("./operations").OperationalAlert[];
+  machineInventoryAvailable?: boolean;
   source: "live" | "backend" | "demo" | "mixed" | "unavailable";
   generatedAt: string;
   states: StateSummary[];

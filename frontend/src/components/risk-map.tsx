@@ -1,7 +1,9 @@
 import { Crosshair, Flame, Tractor } from "lucide-react";
+import { riskLabels } from "@/components/risk-badge";
 import { Badge } from "@/components/ui/badge";
+import { provenanceLabel } from "@/lib/provenance";
 import { cn } from "@/lib/utils";
-import type { HotspotView, PropertyView, RiskLevel } from "@/lib/types";
+import type { HotspotView, MachineView, PropertyView, RiskLevel } from "@/lib/types";
 
 const markerColor: Record<RiskLevel, string> = {
   low: "bg-emerald-400", moderate: "bg-amber-400", high: "bg-orange-500", critical: "bg-red-500", unknown: "bg-slate-400",
@@ -13,8 +15,10 @@ function position(latitude: number, longitude: number) {
   return { left: `${left}%`, top: `${top}%` };
 }
 
-export function RiskMap({ properties, hotspots, selectedId, onSelect }: {
+export function RiskMap({ properties, hotspots, machines = [], perspective = "sompo", selectedId, onSelect }: {
   properties: PropertyView[];
+  machines?: MachineView[];
+  perspective?: "sompo" | "client";
   hotspots: HotspotView[];
   selectedId?: string;
   onSelect: (property: PropertyView) => void;
@@ -29,11 +33,11 @@ export function RiskMap({ properties, hotspots, selectedId, onSelect }: {
 
       <div className="absolute left-5 top-5 z-10">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/80"><Crosshair className="size-4" /> Visão geoespacial · piloto</div>
-        <p className="mt-1 text-xs text-slate-400">Coordenadas das propriedades e focos disponíveis</p>
+        <p className="mt-1 text-xs text-slate-400">{perspective === "sompo" ? "Carteira → propriedade → risco ambiental" : "Propriedade → máquinas e contexto ambiental"}</p>
       </div>
-      <Badge className="absolute right-5 top-5 z-10 border-white/10 bg-white/10 text-slate-200">MT · MS · GO · MG · PR</Badge>
+      <Badge className="absolute right-5 top-5 z-10 hidden md:inline-flex border-white/10 bg-white/10 text-slate-200">Propriedades · contexto</Badge>
 
-      {hotspots.slice(0, 12).map((hotspot) => (
+      {hotspots.filter((h) => Number.isFinite(h.latitude) && Number.isFinite(h.longitude) && Math.abs(h.latitude) <= 90 && Math.abs(h.longitude) <= 180).slice(0, 12).map((hotspot) => (
         <div key={hotspot.id} className="group absolute z-20 -translate-x-1/2 -translate-y-1/2" style={position(hotspot.latitude, hotspot.longitude)}>
           <span className="absolute -inset-2 animate-ping rounded-full bg-orange-500/25 motion-reduce:animate-none" />
           <span className="relative grid size-6 place-items-center rounded-full border border-orange-300/50 bg-orange-500 text-white shadow-lg">
@@ -45,16 +49,22 @@ export function RiskMap({ properties, hotspots, selectedId, onSelect }: {
         </div>
       ))}
 
-      {properties.map((property) => (
+      {machines.filter((m) => m.location?.current && Number.isFinite(m.location.latitude) && Number.isFinite(m.location.longitude)).map((m) => <div key={`${m.propertyId}:${m.id}`} title={`${m.name} · GPS atual · ${m.lastCommunication}`} className="absolute z-30 rounded border border-white bg-cyan-700 p-1" style={position(m.location!.latitude, m.location!.longitude)}><Tractor className="size-4" /></div>)}
+      {properties.filter((property) => Number.isFinite(property.latitude) && Number.isFinite(property.longitude)).map((property) => (
         <button key={property.id} type="button" onClick={() => onSelect(property)}
           className="group absolute z-30 -translate-x-1/2 -translate-y-1/2 text-left outline-none"
           style={position(property.latitude, property.longitude)} aria-label={`Abrir ${property.name}`}>
-          <span className={cn("absolute -inset-2 rounded-full opacity-20", markerColor[property.level], selectedId === property.id && "animate-ping motion-reduce:animate-none")} />
-          <span className={cn("relative grid size-7 place-items-center rounded-full border-2 border-white shadow-[0_0_0_3px_rgba(255,255,255,.12)]", markerColor[property.level])}>
+          <span className={cn("absolute -inset-2 rounded-full opacity-20", markerColor[property.environmentalLevel ?? property.level], selectedId === property.id && "animate-ping motion-reduce:animate-none")} />
+          <span className={cn("relative grid size-7 place-items-center rounded-full border-2 border-white shadow-[0_0_0_3px_rgba(255,255,255,.12)]", markerColor[property.environmentalLevel ?? property.level])}>
             <Tractor className="size-3.5 text-white" />
           </span>
           <span className="absolute left-1/2 top-9 z-40 hidden w-max -translate-x-1/2 rounded-md border border-white/10 bg-slate-950/95 px-2.5 py-1.5 text-[10px] shadow-xl group-hover:block group-focus:block">
-            <strong className="block text-white">{property.name}</strong>
+            <strong className="block text-white">{property.name}</strong><span className="block">Ambiental: {riskLabels[property.environmentalLevel ?? property.level]} · {property.analysisFreshness}</span>
+            {property.clientName && <span className="block">{property.clientName} · identidade demonstrativa</span>}
+            <span className="block">{property.riskType} · {provenanceLabel(property)}</span>
+            <span className="block max-w-64 whitespace-normal">{property.environmentalContext?.sections.find((s) => s.title.startsWith("Previsão de 24h"))?.lines.slice(0, 2).join(" · ")}</span>
+            <span className="block max-w-64 whitespace-normal">{property.factors[0]?.description ?? property.factors[0]?.label}</span>
+            <span className="block max-w-64 whitespace-normal">{property.sources.filter((s) => s.updatedLabel).map((s) => s.name).join(" · ")}</span>
             <span className="text-slate-400">{property.city} · {property.uf}{property.propertyDemo && property.environmentalDataOrigin === "real" ? " · propriedade demo / ambiente real" : property.demo ? " · DEMO" : ""}</span>
           </span>
         </button>
@@ -64,6 +74,8 @@ export function RiskMap({ properties, hotspots, selectedId, onSelect }: {
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-red-500" /> Crítico</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500" /> Alto</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400" /> Moderado</span>
+        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-400" /> Baixo</span>
+        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-400" /> Sem avaliação</span>
         <span className="flex items-center gap-1.5"><Flame className="size-3 text-orange-400" /> Hotspot</span>
         <span className="ml-auto text-slate-500">Visualização indicativa · não representa probabilidade</span>
       </div>
