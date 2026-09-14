@@ -305,3 +305,11 @@ A leitura de notificações usa allowlist: IDs, canal, ocorrência, tipo (`alert
 Detalhes e limitações: [PRODUCTIZATION.md](PRODUCTIZATION.md).
 
 Hardening: status de máquina inclui `telemetryFreshness` (`status`, `fresh`, `ageSeconds`), calculada pelo timestamp da medição, além da conectividade. `recommendations` compartilha regras com o Copilot; listagens por fazenda também incluem recomendações. GPS vencido remove a distância de hotspot do contexto de localização atual. Atualizações de alerta usam precondição de revisão Firestore; conflito exige nova leitura e não autoriza transição inválida. Consulte [PRESENTATION_RUNBOOK.md](PRESENTATION_RUNBOOK.md) para cenários offline e limites de validação.
+
+## SOMPO ESP prototype adapter
+
+`POST /dados` also accepts the exclusive `prototype` object documented in
+[ESP_PROTOTYPE.md](ESP_PROTOTYPE.md) and the `EspPrototype` OpenAPI schema.
+Device-local status is persisted separately from numeric telemetry and platform
+risk. The exact canonical firmware cannot compile or transmit readings as supplied;
+the ingestion adapter is not a working physical acquisition bridge.

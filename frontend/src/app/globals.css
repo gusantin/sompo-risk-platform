@@ -206,6 +206,53 @@ button { cursor: pointer; }
   .ri-property-hero { padding: 24px; gap: 20px; }
   .ri-hero-score { min-width: 180px; padding-left: 20px; }
 }
+
+/* The dialog frame owns the controls; only its body scrolls. */
+.geographic-detail {
+  position: fixed; z-index: 50;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(540px, calc(100% - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))));
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+  display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid #cbd5e1; border-radius: 16px; background: white;
+  box-shadow: 0 24px 60px #0f172a40; outline: none;
+  overflow-wrap: anywhere;
+}
+.geographic-detail-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 8px 16px; flex: none;
+  border-bottom: 1px solid #e2e8f0;
+}
+.geographic-detail-close {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+  border: 1px solid #cbd5e1; border-radius: 50%; color: #334155; background: white;
+}
+.geographic-detail-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-gutter: stable; border-radius: 0 0 16px 16px;
+  scroll-padding-block: 12px; padding-bottom: 12px;
+}
+.geographic-detail-scroll :where(div, section, p, strong, dt, dd, span) { min-width: 0; }
+.geographic-detail-scroll :where(.inline-flex) { white-space: normal; }
+.geographic-detail-scroll :where(.text-slate-400) { color: #526270; }
+.geographic-detail :is(button, [tabindex], summary, a):focus-visible {
+  outline: 3px solid #0369a1; outline-offset: -3px;
+}
+.geographic-detail-heading {
+  position: sticky; top: 0; z-index: 1; padding: 12px 24px;
+  background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+}
+@media (max-width: 639px) {
+  .geographic-detail { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); width: auto; }
+  .geographic-detail-scroll .grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .geographic-detail-scroll .flex.items-center.justify-between { flex-wrap: wrap; gap: 8px; }
+}
+/* Long headings stay in the single body scroller on short/zoomed viewports. */
+@media (max-height: 700px), (max-width: 639px) {
+  .geographic-detail-heading { position: static; }
+}
 @media (max-width: 1050px) {
   .ri-product [aria-label="Abrir Assistente de Risco"] { width: 48px; padding: 0; font-size: 0; }
   .ri-product [aria-label="Abrir Assistente de Risco"] svg { margin: 0; width: 20px; height: 20px; }

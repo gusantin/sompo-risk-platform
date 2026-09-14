@@ -45,6 +45,7 @@ from services.snapshot_service import SnapshotService
 from services.telemetria_service import TelemetriaService
 from services.telemetria_service import parse_timestamp
 from services.unit_service import UnitValidationError, validate_measurements
+from services.esp_prototype_adapter import adapt_prototype
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -435,7 +436,7 @@ def receber_dados():
     observed_at = None
     try:
         allowed = {"deviceId", "readingId", "observedAt", "temperatura", "umidade",
-                   "fazendaId", "maquinaId", "measurements"}
+                   "fazendaId", "maquinaId", "measurements", "prototype"}
         if set(dados) - allowed:
             raise ValueError("Payload contém campos inesperados.")
         device_id = dados.get("deviceId")
@@ -468,8 +469,20 @@ def receber_dados():
             response.headers["Retry-After"] = str(retry_after)
             return response, status
         temperatura = umidade = None
-        legacy = dados.get("measurements") is None
-        if legacy:
+        device_local = None
+        legacy = "prototype" not in dados and dados.get("measurements") is None
+        if "prototype" in dados:
+            if any(field in dados for field in ("measurements", "temperatura", "umidade")):
+                raise ValueError("prototype não pode ser combinado com outros contratos de medição.")
+            measurements, descriptors, device_local = adapt_prototype(dados["prototype"])
+            machine = maquinas.obter(fazenda_id, maquina_id)
+            if not machine or machine.get("fazendaId") != fazenda_id:
+                raise DeviceUnauthorizedError("Associação do dispositivo com a máquina não é válida.")
+            for profile in machine.get("sensoresConfigurados", []):
+                descriptor = descriptors.get(profile.get("sensorId"))
+                if descriptor and any(profile.get(key) != value for key, value in descriptor.items()):
+                    raise ValueError("Perfil configurado conflita com a semântica do protótipo ESP.")
+        elif legacy:
             if dados.get("temperatura") is None or dados.get("umidade") is None:
                 raise ValueError("measurements ou temperatura e umidade são obrigatórios.")
             if any(not isinstance(dados.get(field), (int, float)) or isinstance(dados.get(field), bool)
@@ -515,6 +528,7 @@ def receber_dados():
                 identity["deviceId"], fazenda_id, maquina_id, measurements, descriptors,
                 observed_at, reading_id, "development" if identity["deviceId"] == "development_device" else "iot_device",
                 observed_at_provided=dados.get("observedAt") is not None,
+                **({"device_local": device_local} if device_local is not None else {}),
             )
             persisted_observed_at = saved_reading.get("dataHora", observed_at)
             devices.touch(identity["deviceId"])
@@ -525,6 +539,8 @@ def receber_dados():
                     "deviceHealth": {"status": "online", "ageSeconds": 0},
                     "latestMeasurements": measurements, "latestMeasurementDescriptors": descriptors,
                     "latestTelemetryAt": persisted_observed_at,
+                    **({"latestDeviceLocal": device_local} if device_local is not None
+                       else {"latestDeviceLocal": None} if "latestDeviceLocal" in current else {}),
                     "attention": _machine_requires_attention(current.get("machineRisk"),
                                                               current.get("operationalRisk"), {"status": "online"}),
                 })

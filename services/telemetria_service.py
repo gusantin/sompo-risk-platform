@@ -49,7 +49,7 @@ class TelemetriaService:
                                     "dataHora", "DESCENDING", limite)
 
     def save(self, device_id, fazenda_id, maquina_id, measurements, descriptors, observed_at,
-             reading_id=None, origin="iot_device", observed_at_provided=True):
+             reading_id=None, origin="iot_device", observed_at_provided=True, device_local=None):
         validar_id(device_id, "deviceId"); validar_id(fazenda_id); validar_id(maquina_id, "maquinaId")
         if reading_id is not None:
             validar_id(reading_id, "readingId")
@@ -58,6 +58,8 @@ class TelemetriaService:
             "measurements": measurements, "measurementDescriptors": descriptors,
             "readingId": reading_id,
         }
+        if device_local is not None:
+            payload_for_hash["deviceLocal"] = device_local
         if observed_at_provided:
             payload_for_hash["observedAt"] = observed_at.astimezone(timezone.utc).isoformat()
         payload_hash = hashlib.sha256(json.dumps(payload_for_hash, sort_keys=True,

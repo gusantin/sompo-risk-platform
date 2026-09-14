@@ -107,6 +107,12 @@ O contrato legado `temperatura`/`umidade` permanece aceito, mas é persistido co
 
 ### Preparação do ESP32 físico
 
+O protótipo SOMPO ESP canônico agora está preservado exatamente em
+[`firmware/sompo_esp_prototype/sompo_esp_prototype.ino`](firmware/sompo_esp_prototype/sompo_esp_prototype.ino).
+Consulte [contrato do adaptador e limitações físicas](docs/ESP_PROTOTYPE.md): o texto
+fornecido não compila nem transmite medições. As instruções Wi-Fi/DHT abaixo são
+do firmware legado, não desse protótipo.
+
 O servidor usa `HOST=0.0.0.0` e `PORT=5000` por padrão, portanto aceita conexões na rede local. Antes do upload, copie `firmware/secrets.example.h` para `firmware/secrets.h` e preencha localmente Wi-Fi, URL LAN, `deviceId` provisionado e token; nenhuma credencial deve ir para o Git. O computador precisa manter o mesmo IP (reserva DHCP recomendada) e permitir TCP/5000 no perfil de rede privada do firewall.
 
 O DHT envia somente a identidade/idempotência exigidas pelo backend e as duas medições:

@@ -1,0 +1,2 @@
+# Preserve the canonical user-supplied source byte-for-byte, including CRLF.
+firmware/sompo_esp_prototype/sompo_esp_prototype.ino -text

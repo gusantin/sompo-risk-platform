@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
 import {
   Activity, AlertTriangle, ArrowRight, BellRing, Building2,
   CheckCircle2, ChevronRight, CircleDot, CloudSun, Cpu, Flame, Gauge,
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { RiskBadge, riskLabels } from "@/components/risk-badge";
+import { GeographicDetail } from "@/components/geographic-detail";
 import { RiskMap } from "@/components/risk-map";
 import { RiskSparkline } from "@/components/risk-sparkline";
 import { OperationsPanel } from "@/components/operations-panel";
@@ -172,16 +173,15 @@ function MachinePanel({ machine, machines, onChange }: { machine: MachineView; m
   );
 }
 
-function PropertyDrawer({ property, onClose }: { property: PropertyView | null; onClose: () => void }) {
+function PropertyDrawer({ property, onClose, returnFocus }: { property: PropertyView | null; onClose: () => void; returnFocus: RefObject<HTMLElement | null> }) {
   return (
     <Sheet open={Boolean(property)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      {property && <SheetContent>
+      {property && <GeographicDetail key={property.id} title={property.name} returnFocus={returnFocus}>
+        <div className="geographic-detail-heading"><SheetTitle className="text-xl font-bold text-slate-950">{property.name}</SheetTitle><SheetDescription className="mt-1 text-sm text-slate-600">{property.city} · {property.uf}</SheetDescription></div>
         <div className="px-6 pt-5 text-xs text-slate-600">{property.clientName && <p>{property.clientName} · identidade demonstrativa</p>}<p>{provenanceLabel(property)} · {property.analysisTimestamp ?? "Atualização indisponível"}</p>{property.coordinateDisclosure && <p className="mt-2">{property.coordinateDisclosure}</p>}</div>
         <div className="border-b border-slate-200 bg-slate-50 px-6 pb-5 pt-6">
           <Badge className={property.environmentalDataOrigin === "real" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-violet-300 bg-violet-100 text-violet-800"}>{property.propertyDemo && property.environmentalDataOrigin === "real" ? "Propriedade demonstrativa — condições ambientais reais" : property.demo ? "Cenário demonstrativo" : property.environmentalDataOrigin === "real" ? "Dados ambientais reais" : "Dados indisponíveis"}</Badge>
           <p className="mt-4 text-[9px] font-black uppercase tracking-[0.18em] text-red-600">Por que esta propriedade exige atenção?</p>
-          <SheetTitle className="mt-1 pr-12 text-2xl font-bold tracking-tight text-slate-950">{property.name}</SheetTitle>
-          <SheetDescription className="mt-1 flex items-center gap-1 text-sm text-slate-500"><MapPin className="size-4" /> {property.city} · {property.uf}</SheetDescription>
           <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 text-xs"><div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Latitude</p><strong className="mt-1 block text-slate-800">{Number.isFinite(property.latitude) ? property.latitude.toFixed(6) : "Não disponível"}</strong></div><div><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Longitude</p><strong className="mt-1 block text-slate-800">{Number.isFinite(property.longitude) ? property.longitude.toFixed(6) : "Não disponível"}</strong></div></div>
           <div className="mt-5"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tipo de risco · {property.riskType}</p><p className="mt-1 text-[10px] text-slate-500">Índice de risco e nível</p><div className="mt-1 flex items-center gap-3"><strong className="text-4xl tracking-tight text-slate-950">{property.score ?? "—"}<span className="text-base font-medium text-slate-400">/100</span></strong><RiskBadge level={property.level} /></div></div>
         </div>
@@ -194,7 +194,7 @@ function PropertyDrawer({ property, onClose }: { property: PropertyView | null; 
           <Separator />
           <section><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Por quê</h3><div className="mt-3 space-y-3"><div className="rounded-lg border border-slate-200 p-3"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-sky-700">Na avaliação registrada</p>{property.factors.length ? <div className="mt-2 space-y-2">{property.factors.map((factor) => <div key={factor.key} className="flex gap-2"><CircleDot className="mt-0.5 size-4 shrink-0 text-red-500" /><div><strong className="text-xs text-slate-800">{factor.label}</strong>{factor.description && <p className="mt-0.5 text-[10px] leading-relaxed text-slate-500">{factor.description}</p>}</div></div>)}</div> : <p className="mt-2 text-xs text-slate-400">Motivos detalhados indisponíveis.</p>}</div><div className="rounded-lg border border-slate-200 p-3"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-700">Histórico</p>{property.historyDetails.length ? <dl className="mt-2 space-y-2">{property.historyDetails.map((item) => <div key={item.label} className="flex justify-between gap-3 text-xs"><dt className="text-slate-500">{item.label}</dt><dd className="font-semibold text-slate-800">{item.value}</dd></div>)}</dl> : <p className="mt-2 text-xs text-slate-400">Histórico não disponível.</p>}</div><div className="rounded-lg border border-slate-200 p-3"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-700">Contexto da propriedade</p>{property.contextDetails.length ? <dl className="mt-2 space-y-2">{property.contextDetails.map((item) => <div key={item.label} className="text-xs"><dt className="text-slate-500">{item.label}</dt><dd className="mt-0.5 font-semibold text-slate-800">{item.value}</dd></div>)}</dl> : <p className="mt-2 text-xs text-slate-400">Contexto não disponível.</p>}</div></div></section>
           <Separator />
-          <section><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Valores ambientais participantes</h3>{property.environmentalValues.length ? <dl className="mt-3 grid grid-cols-2 gap-2">{property.environmentalValues.map((item) => <div key={`${item.label}_${item.value}`} className="rounded-lg bg-slate-50 p-3"><dt className="text-[9px] font-bold uppercase text-slate-400">{item.label}</dt><dd className="mt-1 text-sm font-semibold text-slate-800">{item.value}</dd>{item.source && <p className="mt-1 text-[9px] font-semibold text-sky-700">{item.source}</p>}{item.updatedLabel && <p className="mt-0.5 text-[9px] text-slate-400">Atualizado {item.updatedLabel}</p>}</div>)}</dl> : <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Valores ambientais não disponíveis no snapshot atual. Nenhum valor foi inferido.</p>}</section>
+          <section><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Valores ambientais participantes</h3>{property.environmentalValues.length ? <dl className="mt-3 grid grid-cols-2 gap-2">{property.environmentalValues.map((item) => <div key={`${item.label}_${item.value}`} className="rounded-lg bg-slate-50 p-3"><dt className="text-[9px] font-bold uppercase text-slate-400">{item.label}</dt><dd><p className="mt-1 text-sm font-semibold text-slate-800">{item.value}</p>{item.source && <p className="mt-1 text-[9px] font-semibold text-sky-700">{item.source}</p>}{item.updatedLabel && <p className="mt-0.5 text-[9px] text-slate-400">Atualizado {item.updatedLabel}</p>}</dd></div>)}</dl> : <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Valores ambientais não disponíveis no snapshot atual. Nenhum valor foi inferido.</p>}</section>
           <Separator />
           {property.riskType === "Incêndio" && <section className={cn("rounded-xl p-4", property.hotspotDistanceKm !== null ? "border border-orange-200 bg-orange-50" : "border border-slate-200 bg-slate-50")}><div className="flex items-center justify-between"><div className={cn("flex items-center gap-2 text-sm font-bold", property.hotspotDistanceKm !== null ? "text-orange-800" : "text-slate-600")}><Flame className="size-5" /> Foco de calor mais próximo</div><strong className={cn("text-xl", property.hotspotDistanceKm !== null ? "text-orange-900" : "text-slate-400")}>{property.hotspotDistanceKm !== null ? `${property.hotspotDistanceKm.toLocaleString("pt-BR")} km` : "Não disponível"}</strong></div>{property.hotspotDetails.length > 0 && <dl className="mt-3 space-y-1">{property.hotspotDetails.map((item) => <div key={item.label} className="flex justify-between gap-3 text-xs"><dt className="text-slate-500">{item.label}</dt><dd className="font-medium text-slate-700">{item.value}</dd></div>)}</dl>}<p className="mt-2 text-[10px] text-slate-500">{property.hotspotDistanceKm !== null ? "Foco de calor não confirma incêndio atingindo a propriedade." : "Distância de foco recente indisponível neste snapshot."}</p></section>}
           <Separator />
@@ -204,14 +204,15 @@ function PropertyDrawer({ property, onClose }: { property: PropertyView | null; 
           <Separator />
           <section><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Máquinas</h3>{property.machines.length ? <div className="mt-3 space-y-2">{property.machines.map((machine) => { const status = connectionMeta(machine.connection); return <div key={machine.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3"><div><strong className="text-sm text-slate-900">{machine.name}</strong><p className="mt-0.5 text-[10px] text-slate-400">{machine.deviceLinked ? machine.deviceModel : "Aguardando dispositivo embarcado"}</p></div><div className="text-right"><span className={cn("text-[10px] font-bold uppercase", machine.deviceLinked ? status.tone : "text-slate-400")}>{machine.deviceLinked ? status.label : "não vinculado"}</span><div className="mt-1">{machine.machineRiskStatus === "insufficient_data" ? <span className="text-[10px] font-semibold text-slate-500">Dados insuficientes</span> : <RiskBadge level={machine.machineRisk} />}</div></div></div>; })}</div> : <p className="mt-3 text-sm text-slate-400">Nenhuma máquina disponível no snapshot atual.</p>}</section>
         </div>
-        <EnvironmentalConditions context={property.environmentalContext} />
-      </SheetContent>}
+        <div className="px-6 pb-6"><EnvironmentalConditions context={property.environmentalContext} /></div>
+      </GeographicDetail>}
     </Sheet>
   );
 }
 
-function StateDrawer({ state, properties, onClose, onProperty }: {
+function StateDrawer({ state, properties, onClose, onProperty, returnFocus }: {
   state: StateSummary | null;
+  returnFocus: RefObject<HTMLElement | null>;
   properties: PropertyView[];
   onClose: () => void;
   onProperty: (property: PropertyView) => void;
@@ -220,15 +221,14 @@ function StateDrawer({ state, properties, onClose, onProperty }: {
   const hasRealEnvironment = stateProperties.some((property) => property.environmentalDataOrigin === "real");
   return (
     <Sheet open={Boolean(state)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      {state && <SheetContent>
+      {state && <GeographicDetail key={state.uf} title={state.uf} returnFocus={returnFocus}>
+        <div className="geographic-detail-heading"><SheetTitle className="text-xl font-bold text-slate-950">{state.uf}</SheetTitle><SheetDescription className="mt-1 text-sm text-slate-600">Propriedades monitoradas disponíveis neste estado</SheetDescription></div>
         <div className="border-b border-slate-200 bg-slate-50 px-6 pb-5 pt-6">
           <Badge>{state.demo ? `Carteira demonstrativa${hasRealEnvironment ? " · ambiente real" : ""}` : "Carteira SOMPO"} · não é risco territorial</Badge>
-          <SheetTitle className="mt-4 pr-12 text-3xl font-black text-slate-950">{state.uf}</SheetTitle>
-          <SheetDescription className="mt-1 text-sm text-slate-500">Propriedades monitoradas disponíveis neste estado</SheetDescription>
           <div className="mt-5 grid grid-cols-3 gap-2"><div className="rounded-lg bg-white p-3"><p className="text-[9px] uppercase text-slate-400">Monitoradas</p><strong className="text-xl">{state.propertiesMonitored}</strong></div><div className="rounded-lg bg-white p-3"><p className="text-[9px] uppercase text-slate-400">Alto/crítico</p><strong className="text-xl">{state.highCriticalCount}</strong></div><div className="rounded-lg bg-white p-3"><p className="text-[9px] uppercase text-slate-400">Alertas</p><strong className="text-xl">{state.alertCount ?? "—"}</strong></div></div>
         </div>
-        <div className="p-6"><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Propriedades da carteira</h3>{stateProperties.length ? <div className="mt-3 space-y-2">{stateProperties.map((property) => <button type="button" key={property.id} onClick={() => onProperty(property)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50"><div><div className="flex items-center gap-2"><strong className="text-sm text-slate-900">{property.name}</strong>{property.propertyDemo && <Badge className={property.environmentalDataOrigin === "real" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-violet-200 bg-violet-50 text-violet-700"}>{property.environmentalDataOrigin === "real" ? "Ambiente real" : "Demo"}</Badge>}</div><p className="mt-0.5 text-[10px] text-slate-500">{property.city} · {property.uf}</p></div><div className="text-right"><strong className="text-sm text-slate-800">{property.score ?? "—"}/100</strong><div className="mt-1"><RiskBadge level={property.level} /></div></div></button>)}</div> : <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Nenhuma propriedade disponível nesta UF.</p>}</div>
-      </SheetContent>}
+        <div className="p-6"><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Propriedades da carteira</h3>{stateProperties.length ? <div className="mt-3 space-y-2">{stateProperties.map((property) => <button type="button" key={property.id} onClick={() => onProperty(property)} className="geographic-state-property grid w-full grid-cols-1 items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_max-content]"><div><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-900">{property.name}</strong>{property.propertyDemo && <Badge className={property.environmentalDataOrigin === "real" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-violet-200 bg-violet-50 text-violet-700"}>{property.environmentalDataOrigin === "real" ? "Ambiente real" : "Demo"}</Badge>}</div><p className="mt-0.5 text-[10px] text-slate-500">{property.city} · {property.uf}</p></div><div className="text-left sm:text-right"><strong className="text-sm text-slate-800">{property.score ?? "—"}/100</strong><div className="mt-1"><RiskBadge level={property.level} /></div></div></button>)}</div> : <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Nenhuma propriedade disponível nesta UF.</p>}</div>
+      </GeographicDetail>}
     </Sheet>
   );
 }
@@ -288,6 +288,11 @@ export function CommandCenter({ initialData }: { initialData: CommandCenterData 
   const [data, setData] = useState(initialData);
   const [query, setQuery] = useState("");
   const [selectedProperty, setSelectedProperty] = useState<PropertyView | null>(null);
+  const geographicReturnFocus = useRef<HTMLElement | null>(null);
+  function openProperty(property: PropertyView) {
+    if (!(document.activeElement as HTMLElement)?.closest('[role="dialog"]')) geographicReturnFocus.current = document.activeElement as HTMLElement;
+    setSelectedProperty(property);
+  }
   const [selectedState, setSelectedState] = useState<StateSummary | null>(null);
   const [selectedHotspot, setSelectedHotspot] = useState<HotspotView | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<LiveEvent | null>(null);
@@ -369,7 +374,7 @@ export function CommandCenter({ initialData }: { initialData: CommandCenterData 
         {perspective === "sompo" && <Button variant="outline" size="sm" onClick={async () => { setRefreshing(true); try { const r = await fetch("/api/command-center?mode=portfolio"); setData(await r.json()); } catch { setRefreshError("Carteira indisponível."); } finally { setRefreshing(false); } }}>Carteira demonstrativa · dados reais</Button>}
         {refreshError && <p role="alert" className="text-sm text-amber-800">{refreshError}</p>}
         {data.requestMode === "portfolio" && <p className="text-xs text-slate-600">{data.presentationMode === "live" ? "Modo consulta às integrações · confira origem e horário de cada leitura" : "Modo última captura real · atualizar consulta as integrações"}</p>}
-        {(data.requestMode === "portfolio" || perspective === "client") && <ExposureSummary properties={visibleProperties} client={perspective === "client"} onSelect={setSelectedProperty} />}
+        {(data.requestMode === "portfolio" || perspective === "client") && <ExposureSummary properties={visibleProperties} client={perspective === "client"} onSelect={openProperty} />}
         {data.requestMode !== "portfolio" && <OperationsPanel key={`${data.source}:${data.generatedAt}:${perspective}:${clientProperty}`} data={data} perspective={perspective} onAlertUpdated={(alert) => { setData((current) => {
           const properties = current.properties.map((p) => p.id === alert.fazendaId && alert.status === "resolved" ? { ...p, alertCount: p.alertCount === null ? null : Math.max(0, p.alertCount - 1) } : p);
           return { ...current, properties, states: current.states.map((state) => ({ ...state, alertCount: properties.some((p) => p.uf === state.uf && p.alertCount === null) ? null : properties.filter((p) => p.uf === state.uf).reduce((total, p) => total + (p.alertCount ?? 0), 0) })), events: current.events.map((event) => event.id === alert.alertId ? { ...event, alertStatus: alert.status } : event) };
@@ -387,14 +392,14 @@ export function CommandCenter({ initialData }: { initialData: CommandCenterData 
 
         {perspective === "sompo" && visibleStates.length > 0 && <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"><div><h2 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-600">Carteira por estado · exposição ambiental</h2><p className="mt-0.5 text-[10px] text-slate-400">Agregações somente das propriedades disponíveis neste recorte · não representa o risco do estado inteiro</p></div><Gauge className="size-5 text-slate-300" /></div>
-          <div>{visibleStates.map((state) => <StateStrip key={state.uf} state={state} onSelect={() => setSelectedState(state)} />)}</div>
+          <div>{visibleStates.map((state) => <StateStrip key={state.uf} state={state} onSelect={() => { geographicReturnFocus.current = document.activeElement as HTMLElement; setSelectedState(state); }} />)}</div>
         </Card>}
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(350px,.75fr)]">
-          <RiskMap perspective={perspective} machines={presentationMachines} properties={visibleProperties} hotspots={data.hotspots.filter((h) => perspective === "sompo" || h.propertyId === (clientProperty || data.properties[0]?.id))} selectedId={selectedProperty?.id} onSelect={(property) => setSelectedProperty(property)} />
+          <RiskMap perspective={perspective} machines={presentationMachines} properties={visibleProperties} hotspots={data.hotspots.filter((h) => perspective === "sompo" || h.propertyId === (clientProperty || data.properties[0]?.id))} selectedId={selectedProperty?.id} onSelect={openProperty} />
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"><div><h2 className="text-xs font-bold uppercase tracking-[0.15em] text-slate-700">Exposições das propriedades</h2><p className="mt-0.5 text-[10px] text-slate-400">Severidade e evidências da avaliação registrada</p></div><Badge>{attention.length}</Badge></div>
-            <div className="divide-y divide-slate-100">{attention.length ? attention.map((property) => <PropertyRow key={property.id} property={property} onSelect={() => setSelectedProperty(property)} />) : <div className="grid min-h-48 place-items-center p-6 text-center"><div><CheckCircle2 className="mx-auto size-8 text-emerald-500" /><p className="mt-2 text-sm font-semibold text-slate-700">Nenhuma situação sinalizada no recorte disponível</p></div></div>}</div>
+            <div className="divide-y divide-slate-100">{attention.length ? attention.map((property) => <PropertyRow key={property.id} property={property} onSelect={() => openProperty(property)} />) : <div className="grid min-h-48 place-items-center p-6 text-center"><div><CheckCircle2 className="mx-auto size-8 text-emerald-500" /><p className="mt-2 text-sm font-semibold text-slate-700">Nenhuma situação sinalizada no recorte disponível</p></div></div>}</div>
           </Card>
         </section>
 
@@ -402,7 +407,7 @@ export function CommandCenter({ initialData }: { initialData: CommandCenterData 
           {activeMachine ? <MachinePanel machine={activeMachine} machines={presentationMachines} onChange={setSelectedMachine} /> : data.requestMode !== "portfolio" ? <Card className="grid min-h-64 place-items-center"><div className="text-center"><Cpu className="mx-auto size-8 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-600">Aguardando dispositivo embarcado</p><p className="mt-1 text-xs text-slate-400">Nenhum ESP32 físico vinculado.</p></div></Card> : null}
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div className="flex items-center gap-2"><span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-50 motion-reduce:animate-none" /><span className="relative inline-flex size-2 rounded-full bg-red-500" /></span><h2 className="text-xs font-black uppercase tracking-[0.16em] text-slate-800">Sompo Live</h2></div><span className="text-[10px] text-slate-400">Eventos recentes</span></div>
-            <div className="divide-y divide-slate-100">{data.events.length === 0 && <p className="p-5 text-xs text-slate-500">Eventos / avisos não disponíveis no recorte atual.</p>}{data.events.filter((e) => perspective === "sompo" || e.propertyId === (clientProperty || data.properties[0]?.id)).slice(0, 6).map((event) => { const Icon = eventIcon[event.kind]; return <button key={event.id} type="button" onClick={() => setSelectedEvent(event)} aria-label={`Abrir ${event.category === "alert" ? "alerta" : "evento"}: ${event.title}`} className="flex w-full gap-3 px-5 py-3 text-left hover:bg-slate-50"><div className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-full", event.severity === "critical" ? "bg-red-50 text-red-600" : event.severity === "high" ? "bg-orange-50 text-orange-600" : "bg-slate-100 text-slate-600")}><Icon className="size-4" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><Badge className={cn("px-1.5 py-0.5 text-[8px]", event.category === "alert" ? "border-red-200 bg-red-50 text-red-700" : "border-sky-200 bg-sky-50 text-sky-700")}>{event.category === "alert" ? event.alertStatus === "resolved" ? "Resolvido" : event.alertStatus === "acknowledged" ? "Reconhecido" : "Alerta" : "Evento"}</Badge><strong className="truncate text-xs text-slate-800">{event.title}</strong>{event.demo && <Badge className="border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[8px] text-violet-700">Demo</Badge>}</div><p className="mt-1 truncate text-[10px] text-slate-500">{event.propertyName ? `${event.propertyName}${event.city && event.uf ? ` · ${event.city}/${event.uf}` : ""}` : event.location ?? event.description}</p></div><time className="shrink-0 text-[9px] text-slate-400">{event.timeLabel}</time></button>; })}</div>
+            <div className="divide-y divide-slate-100">{data.events.length === 0 && <p className="p-5 text-xs text-slate-500">Eventos / avisos não disponíveis no recorte atual.</p>}{data.events.filter((e) => perspective === "sompo" || e.propertyId === (clientProperty || data.properties[0]?.id)).slice(0, 6).map((event) => { const Icon = eventIcon[event.kind]; return <button key={event.id} type="button" onClick={(click) => { geographicReturnFocus.current = click.currentTarget; setSelectedEvent(event); }} aria-label={`Abrir ${event.category === "alert" ? "alerta" : "evento"}: ${event.title}`} className="flex w-full gap-3 px-5 py-3 text-left hover:bg-slate-50"><div className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-full", event.severity === "critical" ? "bg-red-50 text-red-600" : event.severity === "high" ? "bg-orange-50 text-orange-600" : "bg-slate-100 text-slate-600")}><Icon className="size-4" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><Badge className={cn("px-1.5 py-0.5 text-[8px]", event.category === "alert" ? "border-red-200 bg-red-50 text-red-700" : "border-sky-200 bg-sky-50 text-sky-700")}>{event.category === "alert" ? event.alertStatus === "resolved" ? "Resolvido" : event.alertStatus === "acknowledged" ? "Reconhecido" : "Alerta" : "Evento"}</Badge><strong className="truncate text-xs text-slate-800">{event.title}</strong>{event.demo && <Badge className="border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[8px] text-violet-700">Demo</Badge>}</div><p className="mt-1 truncate text-[10px] text-slate-500">{event.propertyName ? `${event.propertyName}${event.city && event.uf ? ` · ${event.city}/${event.uf}` : ""}` : event.location ?? event.description}</p></div><time className="shrink-0 text-[9px] text-slate-400">{event.timeLabel}</time></button>; })}</div>
           </Card>
         </section>
 
@@ -411,8 +416,8 @@ export function CommandCenter({ initialData }: { initialData: CommandCenterData 
           <Card className="flex items-center gap-4 p-5"><div className="grid size-12 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><ShieldCheck className="size-6" /></div><div><h2 className="text-sm font-bold text-slate-900">Leitura responsável do risco</h2><p className="mt-1 text-xs leading-relaxed text-slate-500">Scores e níveis são índices operacionais baseados na cobertura disponível. Não representam probabilidade de acidente ou incêndio.</p></div></Card>
         </section>
       </div>
-      <PropertyDrawer property={selectedProperty} onClose={() => setSelectedProperty(null)} />
-      <StateDrawer state={selectedState} properties={data.properties} onClose={() => setSelectedState(null)} onProperty={(property) => { setSelectedState(null); setSelectedProperty(property); }} />
+      <PropertyDrawer returnFocus={geographicReturnFocus} property={selectedProperty} onClose={() => setSelectedProperty(null)} />
+      <StateDrawer returnFocus={geographicReturnFocus} state={selectedState} properties={data.properties} onClose={() => setSelectedState(null)} onProperty={(property) => { setSelectedState(null); setSelectedProperty(property); }} />
       <HotspotDrawer hotspot={selectedHotspot} hotspots={data.hotspots} properties={data.properties} onClose={() => setSelectedHotspot(null)} onSelect={setSelectedHotspot} />
       <EventDrawer event={selectedEvent} property={selectedEvent?.propertyId ? data.properties.find((item) => item.id === selectedEvent.propertyId) ?? null : null} onClose={() => setSelectedEvent(null)} onProperty={(property) => { setSelectedEvent(null); setSelectedProperty(property); }} />
       <RiskAssistant available={data.source !== "demo" && data.source !== "unavailable"} portfolioSnapshot={data.requestMode === "portfolio" ? data.generatedAt : undefined} key={`${perspective}:${clientProperty}:${data.source}:${data.requestMode}:${data.generatedAt}`} initialPropertyId={perspective === "client" && (data.source === "backend" || data.requestMode === "portfolio") ? clientProperty || data.properties[0]?.id : undefined} />

@@ -52,7 +52,7 @@ export function RiskMap({ properties, hotspots, machines = [], perspective = "so
       {machines.filter((m) => m.location?.current && Number.isFinite(m.location.latitude) && Number.isFinite(m.location.longitude)).map((m) => <div key={`${m.propertyId}:${m.id}`} title={`${m.name} · GPS atual · ${m.lastCommunication}`} className="absolute z-30 rounded border border-white bg-cyan-700 p-1" style={position(m.location!.latitude, m.location!.longitude)}><Tractor className="size-4" /></div>)}
       {properties.filter((property) => Number.isFinite(property.latitude) && Number.isFinite(property.longitude)).map((property) => (
         <button key={property.id} type="button" onClick={() => onSelect(property)}
-          className="group absolute z-30 -translate-x-1/2 -translate-y-1/2 p-2 text-left outline-none"
+          className="group absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full p-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-white"
           style={position(property.latitude, property.longitude)} aria-pressed={selectedId === property.id} aria-label={`Abrir ${property.name}`}>
           <span className={cn("absolute -inset-2 rounded-full opacity-20", markerColor[property.environmentalLevel ?? property.level])} />
           <span className={cn("relative grid size-7 place-items-center rounded-full border-2 border-white shadow-[0_0_0_3px_rgba(255,255,255,.12)]", markerColor[property.environmentalLevel ?? property.level])}>

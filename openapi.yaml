@@ -401,14 +401,23 @@ components:
       required: [deviceId]
       additionalProperties: false
       oneOf:
-        - {required: [measurements]}
-        - {required: [temperatura, umidade]}
+        - required: [measurements]
+          not: {required: [prototype]}
+        - required: [temperatura, umidade]
+          not: {required: [prototype]}
+        - required: [prototype]
+          not:
+            anyOf:
+              - {required: [measurements]}
+              - {required: [temperatura]}
+              - {required: [umidade]}
       properties:
         deviceId: {type: string}
         readingId: {type: string, description: Chave idempotente opcional por dispositivo}
         observedAt: {type: string, format: date-time}
         fazendaId: {type: string, description: Opcional; se enviado deve coincidir com a identidade}
         maquinaId: {type: string, description: Opcional; se enviado deve coincidir com a identidade}
+        prototype: {$ref: "#/components/schemas/EspPrototype"}
         temperatura: {type: number, minimum: -40, maximum: 85, description: Legado DHT11 com escopo unknown; limites padrão, configuráveis no servidor}
         umidade: {type: number, minimum: 0, maximum: 100, description: Legado DHT11 com escopo unknown}
         measurements:
@@ -416,6 +425,28 @@ components:
           minProperties: 1
           maxProperties: 50
           additionalProperties: {$ref: "#/components/schemas/MeasurementValue"}
+    EspPrototype:
+      type: object
+      additionalProperties: false
+      required: [ventoKmh, statusGeral, dhtComErro]
+      description: Contrato de bridge externo; firmware canônico não transmite telemetria. Status local não é risco da plataforma. Em erro DHT, omitir temperatura e umidade ou enviar null.
+      properties:
+        temperatura: {type: number, nullable: true, description: Celsius; obrigatório sem erro DHT}
+        umidade: {type: number, nullable: true, minimum: 0, maximum: 100, description: Percentual; obrigatório sem erro DHT}
+        ventoKmh: {type: number, minimum: 0, maximum: 100, description: Simulação por potenciômetro em km/h; não é vento meteorológico}
+        leituraLdrDigital: {type: integer, enum: [0, 1], description: Sinal bruto opcional; polaridade não inferida}
+        statusGeral: {type: string, enum: [NORMAL, ATENCAO, RISCO]}
+        dhtComErro: {type: boolean}
+      oneOf:
+        - properties:
+            dhtComErro: {enum: [false]}
+            temperatura: {type: number, nullable: false}
+            umidade: {type: number, nullable: false}
+          required: [temperatura, umidade]
+        - properties:
+            dhtComErro: {enum: [true]}
+            temperatura: {nullable: true, enum: [null]}
+            umidade: {nullable: true, enum: [null]}
     TelemetryAccepted:
       type: object
       required: [status, documentoId, deviceId, fazendaId, maquinaId, observedAt, receivedAt, deduplicated]
